@@ -1,0 +1,14 @@
+{
+  "video": "videos/lamparas-hechas/video-def.mp4",
+  "musicFrom": 22.641,
+  "output": "videos/lamparas-hechas/renders/video-def-music.mp4",
+  "sections": [
+    { "from": 22.641, "track": "calle-lofi",          "role": "bed" },
+    { "from": 57.45,  "track": "esperanza-barrio",    "role": "bed" },
+    { "from": 92.69,  "track": "revuelta-cinematica", "role": "bed" },
+    { "from": 134.45, "track": "abandono-melancolia", "role": "bed", "trackIn": 21.4 },
+    { "from": 159.59, "track": "tension-creciente",   "role": "hit", "hitAt": 172.34, "drop": 91.5 },
+    { "from": 200.68, "track": "revuelta-cinematica", "role": "hit", "hitAt": 245.36, "drop": 122.3 },
+    { "from": 263.86, "track": "llamado-accion",      "role": "ending" }
+  ]
+}

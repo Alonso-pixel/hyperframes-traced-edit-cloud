@@ -1,0 +1,390 @@
+---
+name: traced-edit
+description: >
+  Edit footage (a walk-through, a timelapse, a phone video, someone talking on camera) into a 9:16
+  HyperFrames video through seven traced states — script, audio-analysis, video-analysis,
+  video-edition, sound-effects, music, deliver — where every state records its inputs, params,
+  exact commands, outputs, checks and errors, so a broken step can be found and reproduced at a
+  glance (state.json, TRACE.md, log.txt, status.mjs, trace.html). Two ways in: PLANNED (a topic,
+  text and reference images/clips -> a Spanish teleprompter script -> the user records themselves
+  on camera -> the takes are aligned to the script and trimmed, retakes and stumbles cut out) or
+  FOOTAGE-FIRST (an unplanned video -> a script that follows it beat by beat with a word budget
+  per stretch -> the user records a voiceover -> each paragraph is placed over its stretch and the
+  footage's own sound is ducked under it); footage with no voice skips the script. Cuts pieces at
+  different speeds, maps verified events (things to count) onto the cut, lays clips, images, icons
+  and animations from the shared videos/ASSETS library over it, fires sound effects (also from
+  videos/ASSETS) by rule on those events, lays mood-library music
+  under it with drops landing on events, and injects the event times into an animated overlay
+  (an odometer counter). After sound effects, music and the animations are added, the result
+  pops up in HyperFrames Studio for the user's feedback (and can be reviewed from the phone over
+  Wi-Fi: watch, pin notes to moments, approve); nothing renders without their approval,
+  and hand edits made in Studio are detected and ported into the config. Use for "edit this
+  footage", "write the script for…", "guion para el teleprompter", "write a voiceover for this
+  video", "trim my takes", "count every X in this video", "cut and speed up this walk", "add
+  music / sound effects to the counter video", "do what you did to pintas-presupuesto", or when debugging such
+  an edit ("why is there a pop at 71 s?", "which step broke?"). Not for narrated reportajes
+  (/reportaje-municipal), music under speech (/music-score) or icon heroes on talking videos
+  (/icon-hero-enrich).
+---
+
+# traced-edit
+
+You edit footage by writing **small JSON files**; the scripts do everything else and leave a
+trace of every step. **You never write ffmpeg commands and never do arithmetic on times.**
+
+| # | state (folder) | you write | the user | Studio popup |
+|---|---|---|---|---|
+| 1 | `states/1script(human-review)` | `brief.json`, `script.txt` (+ `beats.json`, `soundbites.json`) | drops context media, reads the script, **checks each sound bite by ear**, approves, **records it** | – |
+| 2 | `states/2audio-analysis` | `params.json` | – | – |
+| 3 | `states/3video-analysis` | `params.json` | – | – |
+| 4 | `states/4video-edition(human-review)` | `edit.json` (+ `inserts` from `videos/ASSETS`) | checks strips and inserts, approves | **yes** |
+| 5 | `states/5sound-effects(human-review)` | `sfx.json` (sounds from `videos/ASSETS/sound-effects`) | listens, gives feedback, approves | **yes** |
+| 6 | `states/6music(human-review)` | `music.json` | listens, gives feedback, approves | **yes** |
+| 7 | `deliverables` | `deliver.json` | watches the animations, approves the render | **yes** |
+
+Each state waits for the previous one's approval (1 → 2, 4 → 5 → 6 → 7). States 2–7 work on the
+footage in `raw-media/`, so they stay BLOCKED until it is added. The footage is copied there once
+and never written again. `trace.html` shows the whole pipeline on one page.
+
+## Two ways in (brief.json "mode")
+
+| mode | when | the voice | the script follows | after the script |
+|---|---|---|---|---|
+| `planned` | a planned topic, nothing recorded yet | the user **on camera** (the footage is the voice) | the topic, the context text and media | record → `--media` → state 2 aligns the takes and **seeds edit.json** with them (the trim) |
+| `footage` | an unplanned video already exists | a **voiceover** recorded after the script | **the footage**, one paragraph per stretch (`beats.json`) | record → `--voice` → state 2 aligns it → state 4 **places each paragraph at its stretch** and ducks the footage's sound under it |
+| `none` | footage with no voice (pintas) | – | – | state 1 is skipped |
+
+`init.mjs` writes the mode from how the project was started; `--mode` changes it. Ask the user
+which way it is when it is not obvious. In every mode the teleprompter file is plain text with
+no timings: in footage mode the timing lives in `beats.json`, and the recording sets the real one.
+
+Worked example (the pintas-presupuesto counter: 32 events, 4 pieces, 41 cues, 3 music sections):
+`examples/pintas.edit.json`, `pintas.sfx.json`, `pintas.music.json`, `pintas.deliver.json`.
+**Open them now** and copy their patterns.
+
+All commands run from the workspace root (`hyperframes-videos/`). `S` means
+`.claude/skills/traced-edit/scripts`.
+
+## Rules (do not break these)
+
+1. Edit only the config files: `brief.json`, `script.txt`, `beats.json` and `soundbites.json` (state 1),
+   `params.json` (states 2–3), `edit.json`, `sfx.json`, `music.json`, `deliver.json`. The user's
+   media goes in `context/` (state 1) and `raw-media/` (through `init.mjs`). Everything in `out/`,
+   `review/`, `listen/`, `preview/` and `deliverables/<project>/` is generated.
+2. Every `srcT` in `edit.json` is a **source** time read off a picture the scripts made. Every
+   other time is an **anchor** (`{"on": "pieceStart", "piece": "B"}`, `{"on": "event", "n": 12}`)
+   or a cut time copied from `out/timeline.json`. Never estimate one, never compute one.
+3. **Every event is confirmed by eye** before it gets `"verified": true`, and **every picture in
+   state 1's `out/context.md` is opened** before the script is written. A beat's `from`/`to` are
+   source times read off the footage sheets, like any `srcT`.
+4. **Approvals are the user's.** Run `approve.mjs` only after the user watched/listened and said
+   yes, with their words in `--note`. Record everything else they say with `feedback.mjs`. An
+   approval the user makes on the phone review page is theirs too (recorded with
+   `"source": "phone"`); you never approve from the page or its API.
+5. **Never render without the approval of state 7.** `run.mjs … 7 --render` refuses otherwise.
+6. **Studio edits are ported, never discarded.** If status says `STUDIO EDIT`, read the diff,
+   move the change into the config (table below), then rebuild with `--ported "<what went where>"`.
+7. When anything fails: read that state's `TRACE.md` first (what went wrong, the failing command
+   to paste, its stderr), then `log.txt`. A trace that says "Script stack (this is a bug in the
+   skill)" means stop and tell the user that exact message.
+8. You cannot hear audio. Sound and music are judged by the user, in the Studio preview.
+9. State 4 (transcode) and state 7 `--render` take minutes: foreground with the longest
+   timeout (`--render` in the background), one at a time.
+10. **States 4 and 5 compose only from `videos/ASSETS/`** (`../ASSETS/` from a project folder).
+    State 4's `inserts` take their clips, images, animations, motion graphics and icons from it
+    (`clips/`, `images/`, `animations/`, `motion-graphics/`, `svg-icons/`). State 5's `sounds`
+    come from `videos/ASSETS/sound-effects/`. The scripts refuse any path outside it. To use
+    something new, the user copies it into the right ASSETS folder first; never point a config
+    at the project folder, Downloads or another video's files. The one folder the skill writes
+    itself is `videos/ASSETS/clips/cabildo/`: state 1 copies the fact-checker's council clips
+    there (with a `.json` sidecar each). Do not put files there by hand.
+11. **A sound bite's caption is the user's, checked by ear.** The Chirp text of a cabildo clip is a
+    draft: never put it on screen as is. `"verified": true` in `soundbites.json` only after the
+    user listened to the clip from `from` to `to` and confirmed the caption, the speaker and the
+    role. State 1 refuses the teleprompter copy, and state 4 refuses to build, otherwise. Real,
+    often accused officials are named: the name and office come from the user or the sidecar,
+    never guessed.
+
+## The review loop (states 4, 5, 6, 7)
+
+Every successful run of 4, 5, 6 or 7 builds a HyperFrames project and **opens it in HyperFrames
+Studio in the user's browser** (one preview at a time; the URL is printed and kept in the trace).
+
+1. `node S/run.mjs videos/<project> <4|5|6|7>`: the preview pops up.
+2. Tell the user what to look/listen for (below), and ask for feedback.
+3. Record what they say: `node S/feedback.mjs videos/<project> <id> "<their words>"`.
+4. Change the config, run again. Studio reloads the same URL.
+5. When they are happy: `node S/approve.mjs videos/<project> <id> --note "<their words>"`.
+
+Reopen a preview: `node S/preview.mjs videos/<project> <id>`. Stop it: `… --stop`. Start the
+server without a browser tab (remote/headless): add `--no-open` to `run.mjs` or `preview.mjs`;
+skip it entirely with `--no-preview`.
+
+### Review from the phone
+
+Every build of 4–7 also writes `out/preview.mp4` (the cut at 720 px with that state's audio at
+`deliver.json` volumes) and keeps a review server running on the PC (`run.mjs` starts it;
+`--no-phone` skips it). On the same Wi-Fi the phone page plays it with the timeline drawn over
+it (counter, piece and speed, the cue or music section playing, insert outlines), lists the
+events, cues or sections to jump to, takes notes pinned to the moment (chips + dictation), shows
+your replies, and lets the user approve. It is for watching and listening; inserts and the
+counter animation are judged exactly in Studio (state 4) and in state 7.
+
+1. `node S/review.mjs videos/<project>`: starts the server and opens a QR code on the PC
+   (`http://127.0.0.1:3019/qr`). Give the user the `📱` URL it prints too: your terminal
+   output does not reach them. Once the user reviews on the phone, add `--no-open` to
+   `run.mjs` so Studio stops popping up on the PC.
+2. Start `node S/review.mjs videos/<project> --wait` **in the background**. It exits when the
+   user sends a note or approves from the phone and prints it, e.g.
+   `PHONE NOTE state 5 (sound-effects): 📱 1:11.40 · near event #12 (+0.05s) · cue pop at 71.37s (rule 3, gain 0.9, +0.03s) · too loud`.
+   The note is already in `feedback.jsonl`: do not record it again.
+3. On a note: change the config (the `near` part names the rule, event or section), say what you
+   did with `node S/feedback.mjs videos/<project> <id> --reply "pop gain 0.9 -> 0.6, rebuilding"`
+   (it pops up on the phone), run `run.mjs <project> <id> --no-open` (the page shows
+   "Rebuilding…", then "New build ready"), and start `--wait` again.
+4. On `PHONE APPROVAL`: the state is approved. Go on with the next state (its `--dry`, its
+   config, its build), then `--wait` again.
+5. A note you cannot act on (it is about something only Studio shows, or it is unclear): ask in
+   a `--reply`, and `--wait` again.
+
+`review.mjs <project> --status` / `--stop`. If the phone cannot connect, see
+`references/troubleshooting.md` (Wi-Fi, firewall).
+
+### Porting a Studio edit
+
+Studio is a full editor, and the user may change something there by hand. The next build would
+overwrite it, so status shows `STUDIO EDIT` and the build is refused.
+`node S/studio-diff.mjs videos/<project> <id>` shows the change (Studio's own re-serialization,
+like the `data-hf-id` stamps, is ignored). Move it into the config:
+
+| changed in Studio | port to |
+|---|---|
+| a track's `data-volume` (base, sfx, music) | `deliver.json` `volumes.base` / `.sfx` / `.music` |
+| footage mode: the voice or the footage's sound (`voice`, `base-audio` = ambience.wav) | `deliver.json` `volumes.voice` / `.ambience`; how far the footage dips under the voice is `edit.json` `voice.duckDb` |
+| one sound louder/softer | that rule's `gain` in `sfx.json` |
+| the overlay's position, size, colour, font | `deliver.json` `overlay.css` (CSS appended inside the overlay, e.g. `#ctr-box { bottom: 420px; }`) |
+| the counter label / accent | `deliver.json` `overlay.vars.label` / `.accent` |
+| a clip's timing | the anchor in `sfx.json` / `music.json`, or the piece in `edit.json` |
+| an insert's position or size (`#ins-<id>`) | `edit.json` `inserts[].box`, plus declarations in `inserts[].css` (e.g. `"top: 300px;"`) |
+| an insert's timing | `edit.json` `inserts[].at` / `.dur` (an anchor, never seconds you worked out) |
+| a sound bite's caption, name or role (`compositions/soundbite-<id>.html`) | `soundbites.json` `caption` / `speaker` / `role` (state 1: the user verifies it again, then rerun 2 → 4); its look: `templates/soundbite.html` |
+| a sound bite's timing | its piece in `edit.json` (and `from`/`to` in `soundbites.json`) |
+| inside an animation (`compositions/insert-<id>.html`) | not ported: it is a copy of `videos/ASSETS/animations/…`. Change the ASSETS file, if the user wants that, and rerun 4 |
+
+Then `node S/run.mjs videos/<project> <id> --ported "volumes.sfx 1 -> 0.6 (Studio)"`. The diff is
+archived in `<state>/studio-edits/` and listed in the trace.
+
+## Step 0: Create the project
+
+```
+node S/init.mjs videos/<project>                          # planned: nothing recorded yet
+node S/init.mjs videos/<project> --media <video.mp4>      # new project: footage-first
+node S/init.mjs <video.mp4> videos/<project>              # footage with no voice (mode none)
+```
+Later, the recording: `init.mjs videos/<project> --media <video>` (planned: the on-camera take)
+or `init.mjs videos/<project> --voice <audio>` (footage: the voiceover; a new take replaces the
+old one, which is kept in `raw-media/voice-takes/`). `--mode planned|footage|none` changes the
+mode; `--link` hard-links instead of copying (same drive). Every script prints the status table,
+with the **next command** under each state.
+
+## Step 1: The script (human review)
+
+Mode `none` skips this step (run `… 1` once). Details: `references/script.md`.
+
+1. Fill `brief.json` from what the user gave you: `topic`, `context` (the facts, notes,
+   article text), optional `audience` and `tone`. Images and video clips they give you go in
+   `states/1script(human-review)/context/`.
+   Optional, for municipal stories: `"enrich": { "corpus": "cabildo" }` (with the `topic`, or
+   `"queries": [...]`) also searches the fact-checker's archive of Facebook-Live council
+   sessions and cuts the best moments into candidate **sound bites** (`references/script.md`).
+2. `node S/run.mjs videos/<project> 1` digests the context: one `out/context.md` with every
+   image, every clip's contact sheets and transcript and, in footage mode, the footage itself. It
+   stops there until the script exists. **Open every picture it lists.** With `enrich`, it first
+   asks the fact-checker (every `fc` call traced; a failure is only a warning): the clips land in
+   `videos/ASSETS/clips/cabildo/`, and `out/enrich/ENRICH.md` lists each candidate (`c1`, `c2` …)
+   with speaker, session, date, agenda item, link into the session, contact sheet and the Chirp
+   words with their times.
+3. Write `script.txt`, **in Spanish**, as plain text: only the words to be read, one idea per
+   paragraph, short sentences, numbers and symbols written the way they are said. No title, no
+   notes, no `[pausa]`, no `NARRADOR:`, no timings, no target length. Every fact comes from the
+   context.
+   - **Footage mode**: the paragraphs follow the footage in order, and `beats.json` gives each
+     one its stretch: `[{ "p": 1, "from": 0, "to": 7.5 }, …]`, source seconds read off the
+     sheets. Each paragraph must fit its stretch at a calm pace (2.5 words/s); an over-budget
+     paragraph gets a warning. Shorten it, or give it a longer stretch.
+   - **Sound bites** (optional, with `enrich`): pick at most 3 short moments (under 20 s) from
+     ENRICH.md into `soundbites.json`: `[{ "id": "sb1", "clip": "clips/cabildo/<passage>.mp4",
+     "from": 3.2, "to": 14.8, "after": 2, "caption": "…", "speaker": "…", "role": "…",
+     "verified": false }]`. `after` is the paragraph it follows (0 = before the first);
+     `from`/`to` are clip seconds from the word times. Write the paragraphs around them (introduce
+     who speaks, then react); the script itself carries no marker. The bite's own audio plays and
+     the narration pauses for it.
+4. `… 1` again: checks the script (and the beats, and the sound bites) and writes
+   `out/teleprompter.txt` (+ `out/beats.md`, each paragraph next to its frames; `out/soundbites.md`,
+   the script with each bite in place). A failed check names the line.
+   A sound bite with `"verified": false` fails its check by design (Rule 11): give the user the
+   clip (`videos/ASSETS/clips/cabildo/…`, or the deep link at its timestamp) and the stretch, and
+   ask them to confirm the caption, speaker and role by ear.
+5. Show the user the whole script in your reply (and the beat table in footage mode, and each
+   sound bite where it plays, from `out/soundbites.md`), plus the path to `out/teleprompter.txt`. Record their changes with `feedback.mjs`, edit, run again.
+   On their OK, approve 1.
+6. The user pastes `out/teleprompter.txt` into the teleprompter and records. Then
+   `init.mjs … --media <on-camera video>` (planned) or `init.mjs … --voice <voiceover>` (footage).
+
+## Step 2: Audio analysis
+
+`node S/run.mjs videos/<project> 2`: the footage's envelope, loudness, quiet runs, sudden sounds,
+`waveform.png`, and, when there is a script, **where each paragraph was said**: whisper on the
+speech (the footage in planned mode, the voiceover in footage mode), aligned to the approved script
+(`out/alignment.md`). A retake replaces the take before it; pauses over `maxPause` and stumbles of
+3+ words that are not in the script are cut out. A paragraph that was not said, or only partly,
+fails the check, with where it was expected.
+
+- **Planned**: while `edit.json` is still a scaffold, the kept takes are seeded into it as
+  pieces (`P1`, `P2a`, `P2b`, …): that is the trim. Each sound bite is seeded as a piece of its
+  clip (`S1` … with `"file"` and `"soundbite"`) after the last take of its paragraph. Review them
+  in state 4, then delete `"_scaffold"`.
+- With no script, set `"transcribe": true` in `params.json` only if there is speech to time against.
+- Whisper times words loosely across silences, so a pause inside a sentence is not always cut.
+
+## Step 3: Video analysis
+
+1. If the things to count have a distinctive colour, add a detector to
+   `states/3video-analysis/params.json` (`references/params.md`).
+2. `node S/run.mjs videos/<project> 3`
+3. Open **every** contact sheet in `out/sheets/` and candidate strip in `out/candidates/`. While
+   `edit.json` is untouched, the candidates are seeded into it as `verified: false` events.
+
+## Step 4: The edit (human review)
+
+In footage mode this state also places the voiceover: each paragraph starts where its beat
+starts on the cut, `out/voice-mix.wav` holds the voice and `out/ambience.wav` the footage's own
+sound, ducked `voice.duckDb` (default −12 dB) under it. A paragraph that runs into the next one
+(closer than 0.3 s) fails the build with three ways out: shorten and re-record it, give its beat
+a longer stretch, or slow its piece.
+
+1. Write `edit.json` (`references/edit-schema.md`): `pieces` (source stretches, in output order,
+   with `speed` and `audio`), `events` (one per counted thing, source time, `verified`),
+   `freezeEnd`. Confirm each event on its strip; exact frame:
+   `node S/inspect.mjs videos/<project> strip <sec> 1.5`. Sound bites are pieces with a `file`
+   (`references/edit-schema.md`): seeded in planned mode; in footage mode add one per bite
+   between two paragraphs' stretches. The clip is fitted to 9:16 over a blurred copy of itself,
+   its caption (name, role, session, date, the verified words) is built into every project, and
+   the music ducks under it (state 6).
+2. Optional **inserts**: b-roll, an image, an icon, an animation laid over the cut. They come only
+   from `videos/ASSETS/` (Rule 10): find candidates in `videos/ASSETS/INDEX.md` or with
+   `node tools/find-asset.mjs <words> --kind clip|image|icon|animation` (descriptions, tags,
+   ⚠ flags, a contact sheet per clip), then look at each candidate before using it (a
+   clip: `node S/inspect.mjs videos/<project> sheet 0 <len> 1 --asset clips/<file>`, which also
+   gives you its `from`; an image or icon: open it; an animation: the `.md` next to it), and pick
+   the ones that match what is on screen. Each insert is `{ id, file (relative to videos/ASSETS), at (an anchor), dur,
+   box, … }` (`references/edit-schema.md`). Inserts lie on top of the footage and never move the
+   cut, so events, SFX and music stay where they are. Generated stills and clips from ASSETS that
+   show a real person's likeness, or words, follow the workspace invariants (`CLAUDE.md`).
+3. `node S/run.mjs videos/<project> 4 --dry` (timeline + inserts check only), then `… 4` to build.
+   **Studio opens** with the cut, the inserts and (if `deliver.json` has one) the counter.
+4. Review with the user: `review/REVIEW.md` and the pictures in `review/` (one strip per event in
+   CUT time, the 6th tile is the event frame; one per piece boundary; one per clip or image
+   insert), and the inserts in Studio: right moment, right place, nothing counted is covered.
+   Loop until approved (the review loop above).
+
+## Step 5: Sound effects (human review, Studio popup)
+
+1. `… 5 --dry` writes `out/sounds.txt`: every sound in `videos/ASSETS/sound-effects` (Rule 10),
+   as the path to paste into `sounds`. Pick from it; there is no other source. To pick by meaning,
+   the SFX section of `videos/ASSETS/INDEX.md` (or `node tools/find-asset.mjs <words> --kind sfx`)
+   has a description, class and length per sound; its paths are relative to `videos/ASSETS`, so
+   drop the leading `sound-effects/`.
+2. Write `sfx.json` (`references/sfx-schema.md`): rules that anchor a sound to events or piece
+   boundaries. `… 5 --dry` prints the cue sheet: every cue with the rule and anchor behind it.
+3. `node S/run.mjs videos/<project> 5`: mixes `sfx-mix.wav`, then **Studio opens** with the cut,
+   the inserts, the effects and (if `deliver.json` has one) the counter, so each sound plays
+   against its tick.
+4. Ask the user: does every tick have its sound, are any too loud or late, does the 4× stretch
+   feel right? Loop until approved (the review loop above).
+
+## Step 6: Music (human review, Studio popup)
+
+1. `node S/run.mjs videos/<project> 6 --dry` writes `out/library.txt` (every track's mood,
+   length, bed start and MAIN drop).
+2. Write `music.json` (`references/music-schema.md`): sections in time order, one track each.
+   - Cut the video where its feel changes: usually at piece boundaries (anchors). Each section
+     ≥ 6 s; neighbours never share a track.
+   - Pick the track whose `mood:` matches what is on screen (walk / neutral: `calle-lofi`,
+     `informativo-neutral`; budgets, numbers, counting: `cifras-datos`; building to a reveal:
+     `tension-creciente`; outrage: `indignacion-phonk`; the close: `llamado-accion`).
+   - A **hit** (`"role": "hit"`) makes the music drop exactly on one moment: `hitAt` is an anchor
+     (the cut into the fast piece, the last event), `drop` is the track's MAIN drop from
+     library.txt, and the section's `from` is 4–45 s earlier (the build-up). 1–2 hits for a
+     2-minute video; none is fine for a short one.
+   - The last section may be `"role": "ending"`: the track's own ending lands on the last frame.
+   - `"sections": []` means no music (still approved by the user).
+3. `… 6 --dry` until it prints the section table without errors, then `… 6`: builds the stem
+   (ducked under the sound effects), checks it (no holes, each hit jumps ≥ 8 dB), and **Studio
+   opens** with cut + effects + music + counter. `listen/` has 10 s clips of every seam and hit.
+4. Ask the user about the mood of each section, the hit, and the music level against the
+   effects. Loop until approved.
+
+## Step 7: Deliver (human review, Studio popup, then render)
+
+1. Write `deliverables/deliver.json`: the overlay (`"template": "counter"` with `vars.label`,
+   `vars.fastPiece` for the ×N badge, `vars.accent`, optional `css`), `volumes`, `output`.
+2. `node S/run.mjs videos/<project> 7`: builds `deliverables/<project>/`, runs
+   `hyperframes check`, snapshots every event (+0.3 s) and **Studio opens** on the final project.
+   Open every contact sheet in `deliverables/snapshots/`: the counter must read each event's
+   number and must not cover what is being counted.
+3. The user plays it in Studio: the animations (counter entrance, ticks, ×N badge, finale) with
+   all the sound. Loop until approved.
+4. `node S/run.mjs videos/<project> 7 --render` (background; ~6 min per minute of video). It
+   refuses unless state 7 is approved and nothing changed since.
+5. Hand over: the mp4 in `deliverables/`, the script (if any), the piece table, the number of events, the inserts
+   (and their ASSETS files), the music sections, and `trace.html`.
+
+## When something is wrong
+
+`node S/status.mjs videos/<project>` (also rewrites `trace.html`):
+
+| status | meaning | do |
+|---|---|---|
+| `OK` | ran, approved where needed, nothing changed | nothing |
+| `NOT RUN` | never ran | run it |
+| `STALE` | an input changed since it ran (named), or an upstream state did | rerun it |
+| `NEEDS REVIEW` | built, not approved yet (or changed after approval) | the review loop |
+| `STUDIO EDIT` | its Studio preview was edited by hand | port it (above) |
+| `BLOCKED` | the state before it is not approved, or there is no footage yet | finish that one / `init.mjs --media` |
+| `FAILED` | the last run stopped | read its `TRACE.md` |
+| `INTERRUPTED` | the process died mid-run | rerun it |
+
+`trace.html`: the pipeline as cards (preview links, feedback history, Studio-edit banners) and
+one timeline: source pieces mapped into the cut, every event's source→cut line, scene cuts, quiet
+runs, detector candidates, every SFX cue coloured by its rule, and the music sections with ◆ hits.
+Hover any mark. Details: `references/trace-format.md`, `references/troubleshooting.md`.
+
+## Files
+
+| Path | What |
+|---|---|
+| `scripts/init.mjs` | step 0: create the project (sets the mode), add the footage (`--media`) or the voiceover (`--voice`) |
+| `scripts/run.mjs` | run a state (`1`–`7`, `script audio video edit sfx music deliver`, or `all`) |
+| `scripts/status.mjs` | status table + `trace.html` |
+| `scripts/preview.mjs` | reopen / list / stop the Studio preview |
+| `scripts/review.mjs` | the phone review server: start (QR code), `--status`, `--stop`, `--wait` (wakes you on a phone note or approval) |
+| `scripts/feedback.mjs` | record what the user said about a state; `--reply` answers a phone note |
+| `scripts/approve.mjs` | record the user's approval (`--revoke` to undo) |
+| `scripts/studio-diff.mjs` | what was changed by hand in a Studio preview |
+| `scripts/inspect.mjs` | `strip`, `frame`, `sheet` of the source (or `--cut`, or `--asset <file in videos/ASSETS>`) |
+| `scripts/states/*.mjs` | one file per state |
+| `scripts/lib/trace.mjs` | trace contract, fingerprints, derived status, feedback, Studio-edit detection |
+| `scripts/lib/hfproject.mjs` | the HyperFrames project generator (previews and deliverable), inserts included |
+| `scripts/lib/paths.mjs` | project layout, `ASSETS` (= `videos/ASSETS`) and `assetFile`, the guard that keeps states 4 and 5 inside it |
+| `scripts/lib/preview.mjs` | Studio server start/stop |
+| `scripts/lib/review.mjs` | phone proxy (`out/preview.mp4`), a note's `near`, the review server registry (`.review.json`) |
+| `scripts/lib/anchors.mjs` | the anchor language shared by sfx.json and music.json (incl. `soundbiteStart`/`soundbiteEnd`) |
+| `scripts/lib/enrich.mjs` | state 1's fact-checker lookup (`fc search`/`fc clip`), `videos/ASSETS/clips/cabildo/`, ENRICH.md; soundbites.json helpers |
+| `scripts/lib/media.mjs` | ffmpeg helpers (each call traced), whisper, the cached video digest |
+| `scripts/lib/align.mjs` | where each script paragraph was said: takes, retakes, segments (pure, no I/O) |
+| `scripts/lib/trace-html.mjs` | `trace.html` |
+| `templates/` | HyperFrames root, the `counter` overlay, the `soundbite` caption, fonts, `review.html` (the phone page) |
+| `references/` | the script guide, schemas, trace format, troubleshooting |
+| `examples/pintas.*.json` | the complete pintas-presupuesto edit, with music |
+| `examples/soundbites.json` | a state-1 `soundbites.json` (one council sound bite) |

@@ -1,0 +1,11 @@
+# secrets
+.env
+*.key
+
+# media lives in R2, the whisper model on the box
+videos/
+tools/models/
+
+# local tooling
+node_modules/
+.wrangler/

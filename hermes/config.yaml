@@ -1,0 +1,30 @@
+# Seeded into /opt/data/config.yaml on first boot (hermes/entrypoint.sh). After that the copy on
+# the volume wins; redeploy with HERMES_CONFIG_FORCE=1 to replace it with this file again.
+# Secrets are NOT here: they are Railway variables (README.md).
+
+model:
+  provider: zai                                   # GLM_API_KEY
+  default: glm-5.1
+  base_url: https://api.z.ai/api/coding/paas/v4   # the Coding Plan endpoint (skips auto-probing)
+
+auxiliary:
+  vision:                     # Rule 3: every contact sheet is looked at, never assumed
+    provider: zai
+    model: glm-5.3-flash      # the image-capable GLM served on the Coding Plan endpoint
+    timeout: 120
+
+fallback_providers:
+  - provider: copilot         # COPILOT_GITHUB_TOKEN (gho_/github_pat_ with "Copilot Requests"; NOT a classic ghp_)
+    model: gpt-5.4
+
+terminal:
+  backend: local
+  timeout: 600                # the foreground cap; longer work goes through `renderbox exec --detach`
+  env_passthrough: [GEMINI_API_KEY]   # for agy (Antigravity CLI)
+
+display:
+  background_process_notifications: result
+
+skills:
+  external_dirs:
+    - /opt/traced-edit/skills   # baked into the image, read-only

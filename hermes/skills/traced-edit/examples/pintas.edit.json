@@ -1,0 +1,69 @@
+{
+  "_note": "pintas-presupuesto as a traced-edit project. Pieces = scripts/build-cut.mjs PIECES; events = pintas.json (verified by eye on 2026-10-01 from contact sheets + ±1.2 s strips). anchor green = onset of the source neon-green highlight; center = ROBERTO centred in frame.",
+  "fps": 30,
+  "freezeEnd": 2,
+  "pieces": [
+    {
+      "id": "A",
+      "from": 0,
+      "to": 62,
+      "speed": 1,
+      "audio": true
+    },
+    {
+      "id": "B",
+      "from": 62,
+      "to": 196.4,
+      "speed": 4,
+      "audio": false
+    },
+    {
+      "id": "K",
+      "from": 248.9,
+      "to": 256.5,
+      "speed": 1,
+      "audio": true
+    },
+    {
+      "id": "C",
+      "from": 317,
+      "to": 339.6,
+      "speed": 1,
+      "audio": true
+    }
+  ],
+  "events": [
+    { "n": 1, "srcT": 28.2, "piece": "A", "anchor": "green", "verified": true },
+    { "n": 2, "srcT": 35.067, "piece": "A", "anchor": "green", "verified": true },
+    { "n": 3, "srcT": 43.867, "piece": "A", "anchor": "green", "verified": true },
+    { "n": 4, "srcT": 51.8, "piece": "A", "anchor": "green", "verified": true },
+    { "n": 5, "srcT": 58.7, "piece": "A", "anchor": "green", "verified": true },
+    { "n": 6, "srcT": 65.6, "piece": "B", "anchor": "center", "verified": true },
+    { "n": 7, "srcT": 74.1, "piece": "B", "anchor": "center", "verified": true },
+    { "n": 8, "srcT": 80.9, "piece": "B", "anchor": "center", "verified": true },
+    { "n": 9, "srcT": 87.8, "piece": "B", "anchor": "center", "verified": true },
+    { "n": 10, "srcT": 93.9, "piece": "B", "anchor": "center", "verified": true },
+    { "n": 11, "srcT": 102.9, "piece": "B", "anchor": "center", "verified": true },
+    { "n": 12, "srcT": 109.9, "piece": "B", "anchor": "center", "verified": true },
+    { "n": 13, "srcT": 116.6, "piece": "B", "anchor": "center", "verified": true },
+    { "n": 14, "srcT": 125.4, "piece": "B", "anchor": "center", "verified": true },
+    { "n": 15, "srcT": 131.9, "piece": "B", "anchor": "center", "verified": true },
+    { "n": 16, "srcT": 138.7, "piece": "B", "anchor": "center", "verified": true },
+    { "n": 17, "srcT": 146.4, "piece": "B", "anchor": "center", "verified": true },
+    { "n": 18, "srcT": 152.4, "piece": "B", "anchor": "center", "verified": true },
+    { "n": 19, "srcT": 158.4, "piece": "B", "anchor": "center", "verified": true },
+    { "n": 20, "srcT": 164.5, "piece": "B", "anchor": "center", "verified": true },
+    { "n": 21, "srcT": 170.6, "piece": "B", "anchor": "center", "verified": true },
+    { "n": 22, "srcT": 177.3, "piece": "B", "anchor": "center", "verified": true },
+    { "n": 23, "srcT": 183.4, "piece": "B", "anchor": "center", "verified": true },
+    { "n": 24, "srcT": 188.8, "piece": "B", "anchor": "center", "verified": true },
+    { "n": 25, "srcT": 194.4, "piece": "B", "anchor": "center", "verified": true },
+    { "n": 26, "srcT": 249.7, "piece": "K", "anchor": "center", "verified": true },
+    { "n": 27, "srcT": 254.9, "piece": "K", "anchor": "center", "verified": true },
+    { "n": 28, "srcT": 320.4, "piece": "C", "anchor": "center", "verified": true },
+    { "n": 29, "srcT": 325.3, "piece": "C", "anchor": "center", "verified": true },
+    { "n": 30, "srcT": 330.4, "piece": "C", "anchor": "center", "verified": true },
+    { "n": 31, "srcT": 334.633, "piece": "C", "anchor": "green", "verified": true },
+    { "n": 32, "srcT": 338.867, "piece": "C", "anchor": "green", "verified": true }
+  ]
+}

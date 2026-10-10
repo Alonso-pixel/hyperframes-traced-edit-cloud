@@ -1,0 +1,62 @@
+#!/usr/bin/env python3
+"""Signed links for the upload Worker (upload-worker/). Same secret on both sides: UPLOAD_HMAC_SECRET.
+
+  upload-link up <project> [--what media|voice|context|none] [--hours 24]   phone upload page
+  upload-link list <project>                                                what was uploaded (keys)
+  upload-link down <r2-key> [--days 7]                                      a download link
+"""
+import base64, hashlib, hmac, json, os, re, shlex, sys, time, urllib.request
+
+# Hermes strips secrets from terminal subprocesses: the entrypoint leaves them in this file.
+_envf = os.path.join(os.environ.get("HERMES_HOME", "/opt/data"), "renderbox", "env")
+if os.path.isfile(_envf):
+    for _line in open(_envf, encoding="utf-8"):
+        _k, _, _v = _line.strip().partition("=")
+        if _k and _k not in os.environ:
+            os.environ[_k] = (shlex.split(_v) or [""])[0]
+
+def b64url(b: bytes) -> str:
+    return base64.urlsafe_b64encode(b).rstrip(b"=").decode()
+
+def token(payload: dict) -> str:
+    secret = os.environ.get("UPLOAD_HMAC_SECRET")
+    if not secret:
+        sys.exit("UPLOAD_HMAC_SECRET is not set")
+    body = b64url(json.dumps(payload, separators=(",", ":")).encode())
+    sig = b64url(hmac.new(secret.encode(), body.encode(), hashlib.sha256).digest())
+    return f"{body}.{sig}"
+
+def base() -> str:
+    b = os.environ.get("WORKER_BASE_URL", "").rstrip("/")
+    if not b:
+        sys.exit("WORKER_BASE_URL is not set")
+    return b
+
+def opt(args, name, default):
+    return args[args.index(name) + 1] if name in args else default
+
+def main(a):
+    if len(a) < 2 or a[0] not in ("up", "list", "down"):
+        sys.exit(__doc__)
+    now = int(time.time())
+    if a[0] in ("up", "list") and not re.fullmatch(r"[A-Za-z0-9._-]+", a[1]):
+        sys.exit(f"bad project name {a[1]!r}")
+    if a[0] == "up":
+        t = token({"a": "u", "p": a[1], "w": opt(a, "--what", "media"), "x": now + int(float(opt(a, "--hours", "24")) * 3600)})
+        print(f"{base()}/u/{t}")
+    elif a[0] == "list":
+        t = token({"a": "l", "p": a[1], "x": now + 300})
+        with urllib.request.urlopen(f"{base()}/l/{t}", timeout=30) as r:
+            items = json.load(r)
+        if not items:
+            print(f"nothing uploaded for {a[1]} yet")
+        for i in sorted(items, key=lambda i: i["uploaded"]):
+            print(f"{i['key']}\t{i['size'] / 1048576:.1f} MB\t{i['uploaded']}")
+    else:
+        key = a[1]
+        if not re.fullmatch(r"(renders|incoming)/[A-Za-z0-9._-]+/[^/]+", key):
+            sys.exit(f"bad key {key!r}")
+        t = token({"a": "d", "p": key.split("/")[1], "k": key, "x": now + int(float(opt(a, "--days", "7")) * 86400)})
+        print(f"{base()}/d/{t}")
+
+main(sys.argv[1:])

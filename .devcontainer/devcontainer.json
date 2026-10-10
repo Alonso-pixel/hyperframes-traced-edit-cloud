@@ -1,0 +1,29 @@
+{
+  "name": "traced-edit render box",
+  "build": { "dockerfile": "Dockerfile" },
+  "hostRequirements": { "cpus": 4, "memory": "16gb", "storage": "32gb" },
+  "runArgs": ["--shm-size=2g"],
+  "features": {
+    "ghcr.io/devcontainers/features/sshd:1": {}
+  },
+  "secrets": {
+    "R2_ACCOUNT_ID": { "description": "Cloudflare account id (R2 endpoint)" },
+    "R2_ACCESS_KEY_ID": { "description": "R2 API token: access key id" },
+    "R2_SECRET_ACCESS_KEY": { "description": "R2 API token: secret" },
+    "R2_BUCKET": { "description": "R2 bucket holding assets/, projects/, incoming/, renders/" }
+  },
+  "remoteEnv": {
+    "WHISPER_CLI": "/usr/local/bin/whisper-cli",
+    "S": ".claude/skills/traced-edit/scripts"
+  },
+  "forwardPorts": [3017, 3019],
+  "portsAttributes": {
+    "3017": { "label": "HyperFrames Studio (private)", "onAutoForward": "silent" },
+    "3019": { "label": "phone review (set public by renderbox)", "onAutoForward": "silent" }
+  },
+  "postCreateCommand": "bash box/post-create.sh",
+  "postStartCommand": "nohup bash box/sync.sh assets > /workspaces/.assets-sync.log 2>&1 &",
+  "customizations": {
+    "codespaces": { "openFiles": ["README.md"] }
+  }
+}

@@ -1,0 +1,8 @@
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "hermes/Dockerfile"
+watchPatterns = ["hermes/**", "railway.toml"]
+
+[deploy]
+restartPolicyType = "ALWAYS"
+# Add a volume mounted at /opt/data in the Railway UI (Hermes' home: memory, sessions, config).

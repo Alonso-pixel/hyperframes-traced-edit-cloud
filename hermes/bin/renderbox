@@ -1,0 +1,225 @@
+#!/usr/bin/env bash
+# The only bridge between the Hermes agent (Railway) and the render Codespace.
+# Every traced-edit command runs THERE, from the workspace root; nothing heavy runs here.
+#
+#   renderbox up                          start (or create) the codespace; wait until it is ready
+#   renderbox exec [--detach] "<cmd>"     run a command on the box. "S/" = the skill's scripts.
+#                                         The project (videos/<p> in the command) is restored from
+#                                         R2 before and saved to R2 after.
+#   renderbox job <id> [lines]            a detached job: RUNNING / FINISHED exit N, log tail
+#   renderbox jobs                        every job
+#   renderbox pull <path-on-box> [...]    copy files/folders here so you can LOOK at them
+#                                         (prints the local paths; give those to the vision tool)
+#   renderbox push <local-file> <dir-on-box>
+#   renderbox ingest <p> <incoming-key> --none|--media|--voice|--context
+#   renderbox urls <p>                    Studio + phone-review links (makes the phone port public)
+#   renderbox deliver <p>                 render -> R2 + a <50 MB copy here + a download link
+#   renderbox update                      git pull on the box (a new version of the skill)
+#   renderbox status | stop | reap        reap = stop if idle (cron)
+#
+# Env: GH_TOKEN (classic PAT: codespace + repo), CODESPACE_REPO (owner/repo),
+#      CODESPACE_MACHINE (default standardLinux32gb = 4 cores), RENDERBOX_IDLE_MIN (default 30),
+#      HERMES_HOME (default /opt/data).
+set -euo pipefail
+
+# Hermes strips secrets from terminal and cron subprocesses: the entrypoint leaves them here.
+ENVF="${HERMES_HOME:-/opt/data}/renderbox/env"
+if [ -r "$ENVF" ]; then set -a; . "$ENVF"; set +a; fi
+export GH_PROMPT_DISABLED=1
+
+REPO="${CODESPACE_REPO:?set CODESPACE_REPO=owner/repo}"
+MACHINE="${CODESPACE_MACHINE:-standardLinux32gb}"
+DISPLAY_NAME="${CODESPACE_DISPLAY_NAME:-traced-edit-box}"
+IDLE_MIN="${RENDERBOX_IDLE_MIN:-30}"
+STATE_DIR="${HERMES_HOME:-/opt/data}/renderbox"
+CACHE="${HERMES_HOME:-/opt/data}/cache/renderbox"
+WS="/workspaces/${REPO#*/}"
+SKILL_S=".claude/skills/traced-edit/scripts"
+mkdir -p "$STATE_DIR" "$CACHE"
+
+say() { echo "renderbox: $*" >&2; }
+touch_activity() { date +%s > "$STATE_DIR/last-activity"; }
+
+cs_name() {
+  gh codespace list -R "$REPO" --json name,displayName -q ".[] | select(.displayName==\"$DISPLAY_NAME\") | .name" 2>/dev/null | head -1
+}
+cs_state() { gh api "/user/codespaces/$1" -q .state 2>/dev/null || echo Unknown; }
+
+# ssh to the box; the remote command goes base64-encoded (no quoting through two shells).
+box() {
+  local name="$1"; shift
+  local b64; b64="$(printf '%s' "$*" | base64 -w0)"
+  gh codespace ssh -c "$name" -- -o ServerAliveInterval=30 -o ServerAliveCountMax=6 "echo $b64 | base64 -d | bash -l"
+}
+
+up() {
+  local name state i
+  name="$(cs_name)"
+  if [ -z "$name" ]; then
+    say "no codespace yet: creating one ($MACHINE). The first build takes 10-20 minutes."
+    name="$(gh codespace create -R "$REPO" -b main -m "$MACHINE" -d "$DISPLAY_NAME" \
+      --idle-timeout 60m --retention-period 720h --default-permissions 2>/dev/null | tail -1)"
+    [ -n "$name" ] || { say "codespace creation failed (gh codespace create)"; exit 1; }
+  fi
+  state="$(cs_state "$name")"
+  if [ "$state" != "Available" ]; then
+    say "codespace $name is $state: starting it…"
+    gh api -X POST "/user/codespaces/$name/start" > /dev/null 2>&1 || true
+    for i in $(seq 1 90); do
+      state="$(cs_state "$name")"
+      [ "$state" = "Available" ] && break
+      sleep 5
+    done
+    [ "$state" = "Available" ] || { say "codespace $name did not start (state $state)"; exit 1; }
+  fi
+  # a brand-new box builds its image, downloads the model and syncs 4 GB of assets: up to ~40 min
+  for i in $(seq 1 240); do
+    if box "$name" "test -f /workspaces/.box-ready" > /dev/null 2>&1; then
+      echo "$name" > "$STATE_DIR/name"
+      touch_activity
+      echo "$name"
+      return 0
+    fi
+    [ "$i" = 1 ] && say "waiting for the box setup (whisper model, browser, assets)…"
+    sleep 10
+  done
+  say "the box never became ready. Its setup log: gh codespace logs -c $name"
+  exit 1
+}
+
+project_of() { grep -oE 'videos/[A-Za-z0-9._-]+' <<< "$1" | grep -v '^videos/ASSETS$' | head -1 | cut -d/ -f2 || true; }
+
+public_review_port() {
+  # Studio (3017) stays private: it has no key. The review page (3019) has one (?k=…).
+  gh codespace ports visibility 3019:public -c "$1" > /dev/null 2>&1 || true
+}
+
+cmd="${1:-}"; shift || true
+case "$cmd" in
+  up) up ;;
+
+  exec)
+    detach=0
+    if [ "${1:-}" = "--detach" ]; then detach=1; shift; fi
+    line="$*"
+    [ -n "$line" ] || { say 'usage: renderbox exec [--detach] "<command>"'; exit 2; }
+    # the skill writes "node S/run.mjs …": S/ is the scripts folder
+    line="$(sed -E "s#(^|[[:space:]\"'])S/#\\1${SKILL_S}/#g" <<< "$line")"
+    # nothing on the box may open a browser (one-line script calls only: never touch a heredoc)
+    if [[ "$line" != *$'\n'* ]] && grep -qE "^node ${SKILL_S}/(run|preview|review)\.mjs " <<< "$line" && ! grep -q -- "--no-open" <<< "$line"; then
+      line="$line --no-open"
+    fi
+    p="$(project_of "$line")"; p="${p:--}"
+    name="$(up)"
+    b64="$(printf '%s' "$line" | base64 -w0)"
+    touch_activity
+    if [ "$detach" = 1 ]; then
+      id="$(box "$name" "cd $WS && bash box/job.sh start '$p' '$b64'")"
+      echo "JOB $id started on the box. Poll it: renderbox job $id"
+    else
+      set +e
+      box "$name" "cd $WS && bash box/run.sh '$p' '$b64'"
+      rc=$?
+      set -e
+      grep -qE "(run|review|preview)\.mjs" <<< "$line" && public_review_port "$name"
+      touch_activity
+      exit $rc
+    fi
+    ;;
+
+  job)
+    name="$(up)"
+    box "$name" "cd $WS && bash box/job.sh status '${1:?job id}' '${2:-40}'"
+    public_review_port "$name"
+    ;;
+  jobs) name="$(up)"; box "$name" "cd $WS && bash box/job.sh list" ;;
+
+  pull)
+    [ $# -ge 1 ] || { say "usage: renderbox pull <path-on-box> [...]"; exit 2; }
+    name="$(up)"
+    for rel in "$@"; do
+      rel="${rel#./}"
+      dest="$CACHE/pull/$(dirname "$rel")"
+      mkdir -p "$dest"
+      gh codespace cp -r -c "$name" "remote:$WS/$rel" "$dest/" > /dev/null
+      find "$CACHE/pull/$rel" -type f | sort
+    done
+    touch_activity
+    ;;
+
+  push)
+    name="$(up)"
+    gh codespace cp -c "$name" "${1:?local file}" "remote:$WS/${2:?dir on box}/"
+    echo "copied to $WS/$2/$(basename "$1") (run renderbox exec with that project afterwards so it is saved to R2)"
+    ;;
+
+  ingest)
+    name="$(up)"
+    touch_activity
+    box "$name" "cd $WS && bash box/ingest.sh '${1:?project}' '${2:?incoming key}' '${3:?--none|--media|--voice|--context}'"
+    ;;
+
+  urls)
+    p="${1:?project}"
+    name="$(up)"
+    public_review_port "$name"
+    box "$name" "cd $WS && bash box/urls.sh '$p'"
+    ;;
+
+  deliver)
+    p="${1:?project}"
+    name="$(up)"
+    out="$(box "$name" "cd $WS && bash box/deliver.sh '$p'")"
+    echo "$out"
+    key="$(sed -n 's/^R2KEY=//p' <<< "$out")"
+    small="$(sed -n 's/^PREVIEW=\([^ ]*\).*/\1/p' <<< "$out")"
+    mkdir -p "$CACHE/deliver"
+    gh codespace cp -c "$name" "remote:$small" "$CACHE/deliver/" > /dev/null
+    local_copy="$CACHE/deliver/$(basename "$small")"
+    link="$(upload-link down "$key" --days 14)"
+    echo "TELEGRAM_COPY=$local_copy"
+    echo "DOWNLOAD_LINK=$link"
+    echo "Send the user:  MEDIA:$local_copy  plus the full-quality link above (valid 14 days)."
+    touch_activity
+    ;;
+
+  update)
+    # after `node sync.mjs` + git push on the PC: the box takes the new skill version
+    name="$(up)"
+    box "$name" "cd $WS && git pull --ff-only"
+    ;;
+
+  status)
+    name="$(cs_name)"
+    if [ -z "$name" ]; then echo "no codespace (renderbox up creates one)"; exit 0; fi
+    st="$(cs_state "$name")"
+    last="$(cat "$STATE_DIR/last-activity" 2>/dev/null || echo 0)"
+    echo "codespace $name: $st (machine $MACHINE); last renderbox activity $(( ($(date +%s) - last) / 60 )) min ago"
+    if [ "$st" = "Available" ]; then box "$name" "cd $WS && bash box/job.sh running" 2>/dev/null | sed 's/^/running job: /' || true; fi
+    ;;
+
+  stop)
+    name="$(cs_name)"
+    [ -n "$name" ] || { echo "no codespace"; exit 0; }
+    gh codespace stop -c "$name" > /dev/null 2>&1 || true
+    echo "codespace $name stopped"
+    ;;
+
+  reap)
+    name="$(cs_name)"
+    [ -n "$name" ] || exit 0
+    [ "$(cs_state "$name")" = "Available" ] || exit 0
+    last="$(cat "$STATE_DIR/last-activity" 2>/dev/null || echo 0)"
+    idle=$(( ($(date +%s) - last) / 60 ))
+    # silent unless it stops the box (the cron delivers whatever this prints)
+    [ "$idle" -ge "$IDLE_MIN" ] || exit 0
+    if box "$name" "cd $WS && bash box/job.sh running" > /dev/null 2>&1; then exit 0; fi
+    gh codespace stop -c "$name" > /dev/null 2>&1 || true
+    echo "stopped $name after $idle idle minutes"
+    ;;
+
+  *)
+    sed -n '2,20p' "$0"
+    exit 2
+    ;;
+esac

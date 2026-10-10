@@ -1,0 +1,7 @@
+# Everything here runs on Linux (the Codespace, the Railway container): LF only.
+* text=auto eol=lf
+*.woff2 binary
+*.png binary
+*.jpg binary
+*.mp3 binary
+*.mp4 binary

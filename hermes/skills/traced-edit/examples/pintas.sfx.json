@@ -1,0 +1,29 @@
+{
+  "_note": "Every cue of pintas-presupuesto/scripts/build-sfx.mjs as rules. Counter entrance: the overlay comes in 0.55 s before the first event, so woosh = first event - 0.65, digits = first event - 0.5.",
+  "library": "videos/ASSETS/sound-effects",
+  "sounds": {
+    "woosh": "Extra/27 SFX PACK (1)-20260929T013945Z-1-001/27 SFX PACK (1)/woosh (1).MP3",
+    "digits": "Extra/27 SFX PACK (1)-20260929T013945Z-1-001/27 SFX PACK (1)/Digital Counting Sound Effect (1).mp3",
+    "pop": "Extra/27 SFX PACK (1)-20260929T013945Z-1-001/27 SFX PACK (1)/pop sound (1).MP3",
+    "chaching": "Extra/71 SFX PACK (1)-20260929T013948Z-1-001/71 SFX PACK (1)/chaching (1).mp3",
+    "riser": "Extra/71 SFX PACK (1)-20260929T013948Z-1-001/71 SFX PACK (1)/ES_Riser Suction 5 - SFX Producer (1).mp3",
+    "clock": "Extra/71 SFX PACK (1)-20260929T013948Z-1-001/71 SFX PACK (1)/Clock ticking fast (1).mp3",
+    "swooshOut": "Extra/71 SFX PACK (1)-20260929T013948Z-1-001/71 SFX PACK (1)/clean-fast-swooshaiff-14784 (1).mp3",
+    "windSwoosh": "mixkit-cinematic-wind-swoosh-1471 (1).wav",
+    "kaching": "Cash Register (Kaching) - Sound Effect (HD) (1).mp3",
+    "punch": "punch (1).mp3"
+  },
+  "rules": [
+    { "sound": "woosh", "on": "firstEvent", "offset": -0.65, "gain": 0.7 },
+    { "sound": "digits", "on": "firstEvent", "offset": -0.5, "gain": 0.55 },
+    { "sound": "pop", "on": "event", "where": { "piece": "B", "exceptLast": true }, "gain": 0.9 },
+    { "sound": "chaching", "on": "event", "where": { "piece": "B", "every": 10, "exceptLast": true }, "gain": 0.55 },
+    { "sound": "chaching", "on": "event", "where": { "notPiece": "B", "exceptLast": true }, "gain": 0.75 },
+    { "sound": "kaching", "on": "lastEvent", "gain": 0.85, "fadeOut": 0.4 },
+    { "sound": "punch", "on": "lastEvent", "gain": 0.8 },
+    { "sound": "riser", "on": "pieceStart", "piece": "B", "gain": 0.6, "align": "peak" },
+    { "sound": "clock", "on": "pieceStart", "piece": "B", "gain": 0.25, "align": "start", "loop": true, "dur": "piece", "fadeIn": 0.3, "fadeOut": 0.3 },
+    { "sound": "swooshOut", "on": "pieceEnd", "piece": "B", "gain": 0.6, "align": "center" },
+    { "sound": "windSwoosh", "on": "pieceStart", "piece": "C", "gain": 0.55, "align": "center" }
+  ]
+}

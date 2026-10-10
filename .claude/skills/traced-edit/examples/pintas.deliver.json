@@ -1,0 +1,20 @@
+{
+  "hyperframes": "0.8.105",
+  "output": "pintas-contador.mp4",
+  "previewPort": 3017,
+  "volumes": {
+    "base": 1,
+    "sfx": 1,
+    "music": 1
+  },
+  "overlay": {
+    "template": "counter",
+    "vars": {
+      "label": "#EsRoberto",
+      "fastPiece": "B",
+      "accent": "#39e43a"
+    },
+    "css": ""
+  },
+  "snapshots": true
+}

@@ -1,0 +1,170 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+  </head>
+  <body>
+    <!-- A sound bite's caption: who is speaking (lower third: name, role, session and date) and the
+         words they say, revealed as they say them. One copy per sound bite, written by traced-edit
+         (lib/hfproject.mjs) with its CFG injected from timeline.json soundbites[]:
+         { dur, speaker, role, session, accent: [r,g,b], pages: [{ start, end, words: [{ w, t }] }] }
+         The words are the caption the user verified by ear (state 1 soundbites.json), never ASR text;
+         only their timing comes from the fact-checker's word times. Times are local to the bite. -->
+    <template>
+      <style>
+        @font-face {
+          font-family: "Figtree";
+          src: url("assets/fonts/figtree-latin.woff2") format("woff2");
+          font-weight: 300 900;
+          unicode-range: U+0000-00FF;
+        }
+        @font-face {
+          font-family: "Figtree";
+          src: url("assets/fonts/figtree-latin-ext.woff2") format("woff2");
+          font-weight: 300 900;
+          unicode-range: U+0100-024F, U+1E00-1EFF;
+        }
+        #__ID__-root {
+          position: absolute;
+          inset: 0;
+          overflow: hidden;
+          font-family: "Figtree", sans-serif;
+          color: #fdfdfd;
+        }
+        #__ID__-root .sb-scrim {
+          position: absolute;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          height: 1000px;
+          background: linear-gradient(to top, rgba(0, 0, 0, 0.82) 0%, rgba(0, 0, 0, 0.66) 45%, rgba(0, 0, 0, 0) 100%);
+          opacity: 0;
+        }
+        #__ID__-root .sb-cap {
+          position: absolute;
+          left: 72px;
+          right: 72px;
+          bottom: 640px;
+          height: 300px;
+        }
+        #__ID__-root .sb-page {
+          position: absolute;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          font-size: 60px;
+          font-weight: 800;
+          line-height: 1.16;
+          text-shadow: 0 3px 14px rgba(0, 0, 0, 0.7);
+          opacity: 0;
+        }
+        #__ID__-root .sb-w {
+          opacity: 0.5;
+        }
+        #__ID__-root .sb-lt {
+          position: absolute;
+          left: 72px;
+          right: 72px;
+          bottom: 400px;
+          padding-left: 30px;
+          opacity: 0;
+        }
+        #__ID__-root .sb-bar {
+          position: absolute;
+          left: 0;
+          top: 4px;
+          bottom: 4px;
+          width: 10px;
+          border-radius: 5px;
+          transform-origin: 50% 0%;
+        }
+        #__ID__-root .sb-name {
+          font-size: 46px;
+          font-weight: 800;
+          line-height: 1.1;
+        }
+        #__ID__-root .sb-role {
+          margin-top: 6px;
+          font-size: 32px;
+          font-weight: 600;
+          line-height: 1.15;
+          color: rgba(253, 253, 253, 0.86);
+        }
+        #__ID__-root .sb-session {
+          margin-top: 10px;
+          font-size: 27px;
+          font-weight: 500;
+          line-height: 1.2;
+          color: rgba(253, 253, 253, 0.66);
+        }
+      </style>
+
+      <div id="__ID__-root" data-composition-id="__ID__" data-width="1080" data-height="1920" data-duration="__DURATION__">
+        <div class="sb-scrim"></div>
+        <div class="sb-cap"></div>
+        <div class="sb-lt">
+          <div class="sb-bar"></div>
+          <div class="sb-name"></div>
+          <div class="sb-role"></div>
+          <div class="sb-session"></div>
+        </div>
+      </div>
+
+      <script>
+        (function () {
+          // Injected by traced-edit from states/4video-edition(human-review)/out/timeline.json.
+          var CFG = __CONFIG__;
+          var ID = "__ID__";
+          var root = document.getElementById(ID + "-root");
+          var q = function (sel) { return root.querySelector(sel); };
+          var G = "rgb(" + CFG.accent.join(",") + ")";
+
+          q(".sb-bar").style.background = G;
+          q(".sb-name").textContent = CFG.speaker;
+          q(".sb-role").textContent = CFG.role;
+          q(".sb-session").textContent = CFG.session;
+          if (!CFG.role) q(".sb-role").style.display = "none";
+          if (!CFG.session) q(".sb-session").style.display = "none";
+
+          var cap = q(".sb-cap");
+          var pages = CFG.pages.map(function (pg) {
+            var el = document.createElement("div");
+            el.className = "sb-page";
+            var spans = pg.words.map(function (x, i) {
+              var s = document.createElement("span");
+              s.className = "sb-w";
+              s.textContent = x.w;
+              el.appendChild(s);
+              if (i < pg.words.length - 1) el.appendChild(document.createTextNode(" "));
+              return s;
+            });
+            cap.appendChild(el);
+            return { el: el, spans: spans, pg: pg };
+          });
+
+          var tl = gsap.timeline({ paused: true });
+          var D = CFG.dur;
+          tl.fromTo(q(".sb-scrim"), { opacity: 0 }, { opacity: 1, duration: 0.35, ease: "power2.out" }, 0);
+          tl.fromTo(q(".sb-lt"), { opacity: 0, x: -24 }, { opacity: 1, x: 0, duration: 0.4, ease: "power2.out" }, 0.05);
+          tl.fromTo(q(".sb-bar"), { scaleY: 0 }, { scaleY: 1, duration: 0.45, ease: "power3.out" }, 0.05);
+          // Pages: one at a time, each word lit when it is said. set + to so seeking back restores.
+          pages.forEach(function (p) {
+            tl.set(p.el, { opacity: 0 }, 0);
+            tl.set(p.spans, { opacity: 0.5, color: "#fdfdfd" }, 0);
+          });
+          pages.forEach(function (p) {
+            tl.fromTo(p.el, { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: 0.22, ease: "power2.out" }, p.pg.start);
+            p.spans.forEach(function (s, i) {
+              tl.to(s, { opacity: 1, duration: 0.12, ease: "none" }, p.pg.words[i].t);
+            });
+            if (p.pg.end < D - 0.01) tl.to(p.el, { opacity: 0, duration: 0.15, ease: "power1.in" }, Math.max(p.pg.start + 0.2, p.pg.end - 0.15));
+          });
+          var out = Math.max(0.6, D - 0.3);
+          tl.to([q(".sb-lt"), q(".sb-scrim"), cap], { opacity: 0, duration: 0.3, ease: "power2.in" }, out);
+
+          window.__timelines[ID] = tl;
+        })();
+      </script>
+    </template>
+  </body>
+</html>

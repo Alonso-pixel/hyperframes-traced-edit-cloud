@@ -1,0 +1,16 @@
+{
+  "_note": "pintas-presupuesto with music. The walk (piece A) on a neutral street bed; cifras-datos (budgets, numbers) builds for 20 s and drops exactly on the cut into the 4x wall (start of piece B); llamado-accion lands its own ending on the last frame from the second wall (piece C) on.",
+  "level": 0,
+  "duckUnderSfx": true,
+  "sections": [
+    { "from": 0, "track": "calle-lofi", "role": "bed" },
+    {
+      "from": { "on": "pieceStart", "piece": "B", "offset": -20 },
+      "track": "cifras-datos",
+      "role": "hit",
+      "hitAt": { "on": "pieceStart", "piece": "B" },
+      "drop": 93.05
+    },
+    { "from": { "on": "pieceStart", "piece": "C" }, "track": "llamado-accion", "role": "ending" }
+  ]
+}

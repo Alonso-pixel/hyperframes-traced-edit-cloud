@@ -1,0 +1,425 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#111113">
+<title>Phone review</title>
+<link rel="icon" href="data:,">
+<!-- Served by scripts/review.mjs. Plays each state's phone proxy (out/preview.mp4) with the timeline
+     drawn over it; notes and approvals go back through /api/feedback and /api/approve. -->
+<style>
+:root{--bg:#111113;--card:#1c1c1f;--fg:#ececee;--muted:#9a9aa0;--line:#2e2e34;--ok:#4caf68;--stale:#e0b23a;--review:#4aa3dd;--fail:#ef6a5b;--blocked:#b07cd0;--idle:#6b6b70;--accent:#39e43a}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+[hidden]{display:none!important}
+html,body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.4 system-ui,-apple-system,sans-serif}
+body{padding:env(safe-area-inset-top) 0 calc(76px + env(safe-area-inset-bottom))}
+header{position:sticky;top:0;z-index:5;background:var(--bg);padding:8px 12px 6px;border-bottom:1px solid var(--line)}
+header b{font-size:14px}header .muted{font-size:12px}
+nav{display:flex;gap:6px;margin-top:6px;overflow-x:auto}
+nav button{flex:1 0 auto;border:2px solid var(--idle);background:var(--card);color:var(--fg);border-radius:10px;padding:6px 10px;font:600 13px system-ui;display:flex;flex-direction:column;align-items:flex-start;min-width:76px}
+nav button span{font:500 10.5px system-ui;color:var(--muted)}
+nav button.on{background:#2a2a30}
+.c-ok{border-color:var(--ok)!important}.c-stale{border-color:var(--stale)!important}.c-review{border-color:var(--review)!important}.c-fail{border-color:var(--fail)!important}.c-blocked{border-color:var(--blocked)!important}.c-run{border-color:var(--review)!important;border-style:dashed!important}
+.banner{margin:8px 12px;padding:10px 12px;border-radius:10px;font-weight:600;font-size:14px}
+.banner.new{background:var(--review);color:#fff}.banner.run{background:#2a2a30;color:var(--fg)}.banner.bad{background:var(--fail);color:#fff}.banner.info{background:var(--card);color:var(--muted);font-weight:500}
+#stage{position:relative;margin:8px auto 0;height:min(58vh,calc((100vw - 24px) * 16 / 9));aspect-ratio:9/16;background:#000;border-radius:10px;overflow:hidden}
+#stage video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000}
+#ov{position:absolute;inset:0;pointer-events:none;font-variant-numeric:tabular-nums}
+.hud{position:absolute;padding:3px 7px;border-radius:7px;background:rgba(0,0,0,.62);font:600 12.5px system-ui;color:#fff}
+#tc{left:6px;top:6px}#pc{left:6px;top:32px}
+#ctr{right:6px;top:6px;font-size:20px;padding:4px 9px;transition:transform .12s}
+#ctr.bump{transform:scale(1.35);background:var(--accent);color:#000}
+#cue{left:50%;bottom:10px;transform:translateX(-50%);white-space:nowrap;opacity:0;transition:opacity .25s}
+#cue.on{opacity:1}
+#sec{left:6px;top:58px;max-width:60%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#hit{right:6px;bottom:10px;opacity:0;background:var(--stale);color:#000;transition:opacity .25s}#hit.on{opacity:1}
+.ins{position:absolute;border:2px dashed #ffd23f;border-radius:4px}.ins span{position:absolute;left:0;top:-1px;background:#ffd23f;color:#000;font:700 10px system-ui;padding:0 4px}
+#empty{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:20px;color:var(--muted)}
+#lane{position:relative;height:58px;margin:10px 12px 0;background:var(--card);border-radius:8px;touch-action:none;overflow:hidden}
+#lane .pc{position:absolute;top:0;height:14px;font:700 9.5px system-ui;color:#fff;padding-left:3px;overflow:hidden;white-space:nowrap;opacity:.85}
+#lane .ev{position:absolute;top:16px;width:2px;height:12px;background:#fff;margin-left:-1px}
+#lane .cu{position:absolute;top:31px;width:5px;height:8px;border-radius:2px;margin-left:-2px}
+#lane .se{position:absolute;top:42px;height:9px;opacity:.8;border-radius:2px}
+#lane .ht{position:absolute;top:39px;width:9px;height:9px;margin-left:-4.5px;background:var(--stale);transform:rotate(45deg);border:1px solid #000}
+#lane .ib{position:absolute;top:31px;height:8px;background:#ffd23f;opacity:.7;border-radius:2px}
+#lane .pin{position:absolute;bottom:0;font-size:11px;margin-left:-6px;line-height:1}
+#lane .ph{position:absolute;top:0;bottom:0;width:2px;background:var(--fail);margin-left:-1px}
+.ctrls{display:flex;gap:8px;margin:10px 12px 0}
+.ctrls button,.btn{flex:1;border:0;border-radius:10px;padding:11px 0;background:var(--card);color:var(--fg);font:600 15px system-ui}
+.ctrls #play{flex:1.4;background:#2a2a30}.ctrls .sel{background:var(--review);color:#fff}
+.tabs2{display:flex;gap:6px;margin:14px 12px 6px}.tabs2 button{flex:1;background:transparent;border:1px solid var(--line);color:var(--muted);border-radius:8px;padding:7px;font:600 13px system-ui}.tabs2 button.on{color:var(--fg);border-color:var(--fg)}
+.list{margin:0 12px;padding:0;list-style:none}
+.list li{background:var(--card);border-radius:9px;margin:6px 0;padding:9px 11px;font-size:13.5px}
+.list li.tap{cursor:pointer}.list .t{font-variant-numeric:tabular-nums;font-weight:700;margin-right:6px}
+.list img{display:block;width:100%;margin-top:7px;border-radius:5px}
+.list .k{font:600 11px system-ui;color:var(--muted);text-transform:uppercase;letter-spacing:.03em}
+.list li.approved{border-left:3px solid var(--ok)}.list li.reply{border-left:3px solid var(--review)}.list li.studio-edit{border-left:3px solid var(--fail)}.list li.phone{border-left:3px solid var(--accent)}
+.muted{color:var(--muted)}
+footer{position:fixed;left:0;right:0;bottom:0;z-index:6;display:flex;gap:8px;padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:linear-gradient(transparent,var(--bg) 30%)}
+footer .btn{padding:14px 0;font-size:15.5px}#note{flex:1.25;background:var(--accent);color:#000}
+#approve{background:var(--ok);color:#fff}#approve:disabled{background:var(--card);color:var(--muted)}
+.sheet{position:fixed;inset:0;z-index:10;background:rgba(0,0,0,.55);display:flex;align-items:flex-end}
+.sheet[hidden]{display:none}
+.sheet>div{width:100%;background:var(--card);border-radius:16px 16px 0 0;padding:14px 14px calc(14px + env(safe-area-inset-bottom))}
+.sheet h3{margin:0 0 4px;font-size:16px}.sheet p{margin:0 0 10px;font-size:12.5px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}.chips button{border:1px solid var(--line);background:transparent;color:var(--fg);border-radius:16px;padding:6px 11px;font:500 13.5px system-ui}.chips button.on{background:var(--accent);color:#000;border-color:var(--accent)}
+textarea{width:100%;min-height:92px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--fg);padding:10px;font:16px system-ui;resize:vertical}
+.row{display:flex;gap:8px;margin-top:10px}.row .go{background:var(--accent);color:#000}.row .ok{background:var(--ok);color:#fff}
+.err{color:var(--fail);font-size:13px;margin-top:8px}
+#toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#2a2a30;color:var(--fg);padding:9px 14px;border-radius:10px;font-size:14px;z-index:20;opacity:0;transition:opacity .3s;pointer-events:none}#toast.on{opacity:1}
+</style>
+</head>
+<body>
+<header>
+  <b id="proj">…</b> <span class="muted" id="sub">phone review</span>
+  <nav id="tabs"></nav>
+</header>
+<div id="banner" class="banner" hidden></div>
+<div id="stage">
+  <video id="v" playsinline preload="auto"></video>
+  <div id="ov">
+    <div id="ins"></div>
+    <div class="hud" id="tc">0:00.00</div>
+    <div class="hud" id="pc"></div>
+    <div class="hud" id="ctr" hidden></div>
+    <div class="hud" id="sec" hidden></div>
+    <div class="hud" id="cue"></div>
+    <div class="hud" id="hit">◆ hit</div>
+  </div>
+  <div id="empty" hidden></div>
+</div>
+<div id="lane"></div>
+<div class="ctrls">
+  <button id="back">−2s</button><button id="play">▶</button><button id="fwd">+2s</button><button id="slow">½×</button>
+</div>
+<div class="tabs2"><button data-l="moments" class="on">Moments</button><button data-l="feedback">Feedback <span id="fbn"></span></button></div>
+<ul class="list" id="list"></ul>
+<footer><button class="btn" id="note">📌 Note at <span id="noteT">0:00.00</span></button><button class="btn" id="approve" disabled>Approve</button></footer>
+
+<div class="sheet" id="noteSheet" hidden><div>
+  <h3>Note at <span id="nsT"></span></h3>
+  <p class="muted" id="nsNear"></p>
+  <div class="chips" id="chips"></div>
+  <textarea id="nsText" placeholder="What should change? (dictation works)"></textarea>
+  <div class="err" id="nsErr"></div>
+  <div class="row"><button class="btn" id="nsCancel">Cancel</button><button class="btn go" id="nsSend">Send</button></div>
+</div></div>
+<div class="sheet" id="apSheet" hidden><div>
+  <h3>Approve <span id="apName"></span></h3>
+  <p class="muted">Your words are recorded with the approval. Claude then moves on to the next state.</p>
+  <textarea id="apText" placeholder="e.g. the sounds are right, approved"></textarea>
+  <div class="err" id="apErr"></div>
+  <div class="row"><button class="btn" id="apCancel">Cancel</button><button class="btn ok" id="apSend">Approve</button></div>
+</div></div>
+<div id="toast"></div>
+
+<script>
+(function () {
+  "use strict";
+  var K = new URLSearchParams(location.search).get("k") || "";
+  var CLS = { "OK": "c-ok", "NOT RUN": "", "STALE": "c-stale", "NEEDS REVIEW": "c-review", "BLOCKED": "c-blocked", "FAILED": "c-fail", "RUNNING": "c-run", "INTERRUPTED": "c-fail", "STUDIO EDIT": "c-fail" };
+  var TAB = { "4": "Edit", "5": "SFX", "6": "Music", "7": "Final" };
+  var COLORS = ["#4e79a7", "#f28e2b", "#e15759", "#76b7b2", "#59a14f", "#edc948", "#b07aa1", "#ff9da7", "#9c755f", "#bab0ac", "#1f77b4", "#d62728"];
+  var CHIPS = {
+    "4": ["cut earlier", "cut later", "wrong event", "missing event", "insert covers it", "insert wrong place", "too long", "too short"],
+    "5": ["too loud", "too soft", "late", "early", "remove it", "missing sound", "wrong sound"],
+    "6": ["wrong mood", "music too loud", "music too soft", "hit not landing", "change track here", "seam is rough"],
+    "7": ["counter covers it", "counter wrong number", "animation too fast", "too loud", "too soft", "looks good"]
+  };
+  var $ = function (id) { return document.getElementById(id); };
+  var v = $("v");
+  var states = [], cur = null, data = null, loadedVersion = null, lastFb = {}, listMode = "moments";
+  var chipsOn = [], noteT = 0, lastCount = -1, lastCue = null, lastHit = null;
+
+  function api(path, opts) {
+    opts = opts || {};
+    opts.headers = Object.assign({ "x-review-key": K, "Content-Type": "application/json" }, opts.headers || {});
+    return fetch(path, opts).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) throw new Error(j.error || ("HTTP " + r.status)); return j; });
+    });
+  }
+  function fmt(t) { t = Math.max(0, t || 0); var m = Math.floor(t / 60); return m + ":" + (t - m * 60).toFixed(2).padStart(5, "0"); }
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  function toast(msg) { var t = $("toast"); t.textContent = msg; t.classList.add("on"); clearTimeout(t._h); t._h = setTimeout(function () { t.classList.remove("on"); }, 2600); }
+  function stateOf(id) { for (var i = 0; i < states.length; i++) if (states[i].id === id) return states[i]; return null; }
+
+  // ---------- tabs + polling ----------
+  function drawTabs() {
+    $("tabs").innerHTML = states.map(function (s) {
+      return '<button data-id="' + s.id + '" class="' + (CLS[s.code] || "") + (s.id === cur ? " on" : "") + '">' + s.id + " " + TAB[s.id] + "<span>" + esc(s.code) + "</span></button>";
+    }).join("");
+  }
+  $("tabs").addEventListener("click", function (e) {
+    var b = e.target.closest("button"); if (!b) return;
+    select(b.getAttribute("data-id"), 0);
+  });
+  function pickDefault() {
+    var want = location.hash.replace("#", "");
+    if (stateOf(want)) return want;
+    var order = ["RUNNING", "NEEDS REVIEW", "STUDIO EDIT", "FAILED"];
+    for (var o = 0; o < order.length; o++) for (var i = 0; i < states.length; i++) if (states[i].code === order[o]) return states[i].id;
+    for (var j = states.length - 1; j >= 0; j--) if (states[j].version !== "none") return states[j].id;
+    return "4";
+  }
+  function poll() {
+    return api("/api/state").then(function (j) {
+      states = j.states;
+      $("proj").textContent = j.project;
+      $("sub").textContent = "phone review" + (j.mode && j.mode !== "none" ? " · " + j.mode : "");
+      if (!cur) { select(pickDefault(), 0); return; }
+      drawTabs();
+      var s = stateOf(cur);
+      if (data && s && s.feedback !== lastFb[cur]) refreshFeedback();
+      banner(s);
+      approveBtn(s);
+    }).catch(function (e) { showBanner("bad", "Lost the PC: " + e.message + ". Is review.mjs still running?"); });
+  }
+  function showBanner(kind, html, onTap) {
+    var b = $("banner"); b.className = "banner " + kind; b.innerHTML = html; b.hidden = false; b.onclick = onTap || null;
+  }
+  function banner(s) {
+    if (!s) return;
+    if (s.code === "RUNNING") return showBanner("run", "⏳ Rebuilding state " + s.id + "…");
+    if (s.version !== "none" && loadedVersion && s.version !== loadedVersion) return showBanner("new", "✨ New build ready — tap to load it", function () { select(cur, v.currentTime); });
+    if (s.code === "STUDIO EDIT") return showBanner("bad", "Changed by hand in Studio: Claude has to port it before the next build.");
+    if (s.code === "FAILED") return showBanner("bad", "The last build failed: " + esc(s.reason));
+    if (s.code === "STALE") return showBanner("info", "Out of date (" + esc(s.reason) + "). Claude has to rebuild it.");
+    if (s.code === "BLOCKED") return showBanner("info", "Blocked: " + esc(s.reason));
+    if (s.code === "OK") return showBanner("info", "✓ Approved.");
+    $("banner").hidden = true;
+  }
+  function approveBtn(s) {
+    var b = $("approve");
+    var can = s && s.code === "NEEDS REVIEW" && !s.dry && s.version !== "none";
+    b.disabled = !can;
+    b.textContent = s && s.code === "OK" ? "✓ Approved" : "Approve " + (s ? TAB[s.id] : "");
+  }
+
+  // ---------- one state ----------
+  function select(id, keepT) {
+    cur = id; location.hash = id;
+    drawTabs();
+    return api("/api/review/" + id).then(function (d) {
+      data = d;
+      var s = stateOf(id);
+      loadedVersion = s ? s.version : null;
+      lastFb[id] = d.feedback.length;
+      lastCount = -1; lastCue = null; lastHit = null;
+      if (d.video) {
+        $("empty").hidden = true;
+        v.hidden = false;
+        v.src = d.video;
+        v.load();
+        if (keepT) v.addEventListener("loadedmetadata", function f() { v.removeEventListener("loadedmetadata", f); v.currentTime = Math.min(keepT, (v.duration || keepT) - 0.05); }, { once: true });
+      } else {
+        v.removeAttribute("src"); v.load(); v.hidden = true;
+        $("empty").hidden = false;
+        $("empty").innerHTML = "Nothing to play for state " + id + " yet.<br>" + (s ? esc(s.code) + (s.reason ? ": " + esc(s.reason) : "") : "");
+      }
+      $("ctr").hidden = !d.events.length;
+      $("sec").hidden = !d.sections.length;
+      $("pc").hidden = !d.pieces.length;
+      drawInserts(); drawLane(); drawList(); banner(s); approveBtn(s); update();
+      $("fbn").textContent = d.feedback.length ? "(" + d.feedback.length + ")" : "";
+    }).catch(function (e) { showBanner("bad", "Could not load state " + id + ": " + esc(e.message)); });
+  }
+  function refreshFeedback() {
+    return api("/api/review/" + cur).then(function (d) {
+      if (!data || d.id !== data.id) return;
+      var added = d.feedback.slice(data.feedback.length).filter(function (f) { return f.kind === "reply"; });
+      data.feedback = d.feedback; lastFb[cur] = d.feedback.length;
+      $("fbn").textContent = d.feedback.length ? "(" + d.feedback.length + ")" : "";
+      if (added.length) toast("Claude: " + added[added.length - 1].text);
+      drawLane(); if (listMode === "feedback") drawList();
+    });
+  }
+
+  function drawInserts() {
+    $("ins").innerHTML = (cur === "4" ? data.inserts : []).filter(function (x) { return x.rect; }).map(function (x) {
+      var r = x.rect;
+      return '<div class="ins" data-t="' + x.t + '" data-d="' + x.dur + '" style="left:' + (r.left / 10.8) + "%;top:" + (r.top / 19.2) + "%;width:" + (r.width / 10.8) + "%;height:" + (r.height / 19.2) + '%;display:none"><span>' + esc(x.id) + "</span></div>";
+    }).join("");
+  }
+
+  function drawLane() {
+    var D = data.duration || v.duration || 1, h = [];
+    var pct = function (t) { return (100 * t / D).toFixed(3) + "%"; };
+    data.pieces.forEach(function (p, i) {
+      h.push('<div class="pc" style="left:' + pct(p.start) + ";width:" + pct(p.duration) + ";background:" + COLORS[(i + 6) % COLORS.length] + '">' + esc(p.id) + (p.speed !== 1 ? " " + p.speed + "×" : "") + "</div>");
+    });
+    data.events.forEach(function (e) { h.push('<div class="ev" style="left:' + pct(e.t) + '"></div>'); });
+    if (cur === "4") data.inserts.forEach(function (x) { h.push('<div class="ib" style="left:' + pct(x.t) + ";width:" + pct(x.dur) + '"></div>'); });
+    data.cues.forEach(function (c) { h.push('<div class="cu" style="left:' + pct(c.at) + ";background:" + COLORS[(c.rule - 1) % COLORS.length] + '"></div>'); });
+    data.sections.forEach(function (s, i) {
+      h.push('<div class="se" style="left:' + pct(s.from) + ";width:" + pct(s.to - s.from) + ";background:" + COLORS[(i + 3) % COLORS.length] + '"></div>');
+      if (s.hit) h.push('<div class="ht" style="left:' + pct(s.hit.at) + '"></div>');
+    });
+    data.feedback.forEach(function (f) { if (typeof f.t === "number") h.push('<div class="pin" style="left:' + pct(f.t) + '">📌</div>'); });
+    h.push('<div class="ph" id="ph"></div>');
+    $("lane").innerHTML = h.join("");
+  }
+
+  function drawList() {
+    var L = [], d = data;
+    if (listMode === "feedback") {
+      if (!d.feedback.length) L.push('<li class="muted">No feedback yet. Tap 📌 while it plays.</li>');
+      d.feedback.slice().reverse().forEach(function (f) {
+        var who = f.kind === "reply" ? "Claude" : f.kind === "approved" ? "approved" : f.kind === "studio-edit" ? "Studio edit" : f.source === "phone" ? "you, phone" : f.kind;
+        var tap = typeof f.t === "number";
+        L.push('<li class="' + esc(f.kind) + (f.source === "phone" && f.kind === "feedback" ? " phone" : "") + (tap ? ' tap" data-t="' + f.t : "") + '"><div class="k">' + esc(who) + " · " + esc(f.at ? new Date(f.at).toLocaleString([], { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : "") + "</div>" +
+          (tap ? '<span class="t">' + fmt(f.t) + "</span>" : "") + esc(f.text) + (f.near ? '<div class="muted">near ' + esc(f.near) + "</div>" : "") + "</li>");
+      });
+    } else if (cur === "5") {
+      d.cues.forEach(function (c) {
+        L.push('<li class="tap" data-t="' + Math.max(0, c.at - 1.5) + '"><span class="t">' + fmt(c.at) + '</span><b style="color:' + COLORS[(c.rule - 1) % COLORS.length] + '">' + esc(c.sound) + '</b> <span class="muted">rule ' + c.rule + " · gain " + c.gain + " · " + esc(c.anchor) + "</span></li>");
+      });
+    } else if (cur === "6") {
+      d.sections.forEach(function (s) {
+        L.push('<li class="tap" data-t="' + Math.max(0, s.from - 2) + '"><span class="t">' + fmt(s.from) + "</span><b>" + esc(s.track) + '</b> <span class="muted">section ' + s.n + " · " + esc(s.role) + " · to " + fmt(s.to) + "</span></li>");
+        if (s.hit) L.push('<li class="tap" data-t="' + Math.max(0, s.hit.at - 6) + '"><span class="t">' + fmt(s.hit.at) + "</span>◆ hit in " + esc(s.track) + (s.hit.rise != null ? ' <span class="muted">+' + s.hit.rise + " dB</span>" : "") + ' <span class="muted">(plays from 6 s before)</span></li>');
+      });
+    } else {
+      var pics = {};
+      d.pictures.forEach(function (p) { var m = /event-(\d+)\.jpg/.exec(p.src); if (m) pics[+m[1]] = p.src; });
+      d.events.forEach(function (e) {
+        L.push('<li class="tap" data-t="' + Math.max(0, e.t - 1) + '"><span class="t">' + fmt(e.t) + "</span>event #" + e.n + ' <span class="muted">piece ' + esc(e.piece) + "</span>" + (pics[e.n] ? '<img loading="lazy" src="' + pics[e.n] + '" alt="">' : "") + "</li>");
+      });
+      if (cur === "4") d.inserts.forEach(function (x) {
+        L.push('<li class="tap" data-t="' + Math.max(0, x.t - 0.5) + '"><span class="t">' + fmt(x.t) + "</span>insert " + esc(x.id) + ' <span class="muted">' + esc(x.kind) + " · " + esc(x.file) + " · " + x.dur + " s</span></li>");
+      });
+      d.pictures.forEach(function (p) { if (!/event-\d+\.jpg/.test(p.src)) L.push("<li>" + esc(p.caption) + '<img loading="lazy" src="' + p.src + '" alt=""></li>'); });
+    }
+    if (!L.length) L.push('<li class="muted">Nothing listed for this state.</li>');
+    $("list").innerHTML = L.join("");
+  }
+  $("list").addEventListener("click", function (e) {
+    var li = e.target.closest("li.tap"); if (!li) return;
+    v.currentTime = +li.getAttribute("data-t"); v.play().catch(function () {});
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  });
+  document.querySelectorAll(".tabs2 button").forEach(function (b) {
+    b.addEventListener("click", function () {
+      listMode = b.getAttribute("data-l");
+      document.querySelectorAll(".tabs2 button").forEach(function (x) { x.classList.toggle("on", x === b); });
+      if (data) drawList();
+    });
+  });
+
+  // ---------- the overlay, every frame ----------
+  function update() {
+    if (!data) return;
+    var t = v.currentTime || 0, D = data.duration || v.duration || 1;
+    $("tc").textContent = fmt(t);
+    $("noteT").textContent = fmt(t);
+    var ph = $("ph"); if (ph) ph.style.left = (100 * t / D) + "%";
+    var p = null;
+    for (var i = 0; i < data.pieces.length; i++) { var q = data.pieces[i]; if (t >= q.start && t < q.start + q.duration) p = q; }
+    if (p) $("pc").textContent = "piece " + p.id + (p.speed !== 1 ? " · " + p.speed + "×" : "");
+    if (data.events.length) {
+      var n = 0; data.events.forEach(function (e) { if (e.t <= t + 0.001) n++; });
+      var c = $("ctr");
+      c.textContent = (data.overlay && data.overlay.label ? data.overlay.label + " " : "") + n + "/" + data.events.length;
+      if (lastCount >= 0 && n > lastCount && !v.paused) { c.classList.add("bump"); setTimeout(function () { c.classList.remove("bump"); }, 220); }
+      lastCount = n;
+    }
+    var cue = null;
+    data.cues.forEach(function (x) { if (t >= x.at && t < x.at + 0.7) cue = x; });
+    var ce = $("cue");
+    if (cue && cue !== lastCue) ce.textContent = "🔊 " + cue.sound + " · rule " + cue.rule;
+    ce.classList.toggle("on", !!cue); lastCue = cue;
+    if (data.sections.length) {
+      var s = null; data.sections.forEach(function (x) { if (t >= x.from && t < x.to) s = x; });
+      $("sec").textContent = s ? "♪ " + s.track : "♪ —";
+      var hit = data.sections.some(function (x) { return x.hit && t >= x.hit.at && t < x.hit.at + 0.8; });
+      $("hit").classList.toggle("on", hit);
+    }
+    var boxes = $("ins").children;
+    for (var b = 0; b < boxes.length; b++) {
+      var bt = +boxes[b].getAttribute("data-t"), bd = +boxes[b].getAttribute("data-d");
+      boxes[b].style.display = t >= bt && t < bt + bd ? "block" : "none";
+    }
+  }
+  (function loop() { if (!v.paused) update(); requestAnimationFrame(loop); })();
+  v.addEventListener("timeupdate", update);
+  v.addEventListener("seeked", update);
+  v.addEventListener("play", function () { $("play").textContent = "❚❚"; });
+  v.addEventListener("pause", function () { $("play").textContent = "▶"; update(); });
+
+  // ---------- controls ----------
+  $("play").onclick = function () { if (v.paused) v.play().catch(function (e) { toast(e.message); }); else v.pause(); };
+  $("back").onclick = function () { v.currentTime = Math.max(0, v.currentTime - 2); };
+  $("fwd").onclick = function () { v.currentTime = Math.min(v.duration || 0, v.currentTime + 2); };
+  $("slow").onclick = function () { v.playbackRate = v.playbackRate === 1 ? 0.5 : 1; $("slow").classList.toggle("sel", v.playbackRate !== 1); };
+  v.addEventListener("click", function () { $("play").onclick(); });
+  function seekLane(e) {
+    var r = $("lane").getBoundingClientRect(), D = data ? (data.duration || v.duration || 0) : 0;
+    var x = (e.touches ? e.touches[0].clientX : e.clientX) - r.left;
+    if (D) { v.currentTime = Math.max(0, Math.min(D - 0.05, D * x / r.width)); update(); }
+  }
+  var dragging = false;
+  $("lane").addEventListener("pointerdown", function (e) { dragging = true; seekLane(e); });
+  window.addEventListener("pointermove", function (e) { if (dragging) seekLane(e); });
+  window.addEventListener("pointerup", function () { dragging = false; });
+
+  // ---------- note sheet ----------
+  function nearHint(t) {
+    var parts = [], d = data;
+    var e = null; d.events.forEach(function (x) { if (!e || Math.abs(x.t - t) < Math.abs(e.t - t)) e = x; });
+    if (e && Math.abs(e.t - t) <= 1.5) parts.push("event #" + e.n);
+    var c = null; d.cues.forEach(function (x) { if (!c || Math.abs(x.at - t) < Math.abs(c.at - t)) c = x; });
+    if (c && Math.abs(c.at - t) <= 1) parts.push(c.sound + " (rule " + c.rule + ")");
+    d.sections.forEach(function (s) { if (t >= s.from && t < s.to) parts.push("♪ " + s.track); });
+    return parts.length ? "near " + parts.join(" · ") : "";
+  }
+  $("note").onclick = function () {
+    if (!data) return;
+    v.pause(); noteT = v.currentTime || 0; chipsOn = [];
+    $("nsT").textContent = fmt(noteT) + " · state " + cur + " " + TAB[cur];
+    $("nsNear").textContent = nearHint(noteT);
+    $("chips").innerHTML = (CHIPS[cur] || []).map(function (c) { return "<button>" + esc(c) + "</button>"; }).join("");
+    $("nsText").value = ""; $("nsErr").textContent = "";
+    $("noteSheet").hidden = false;
+  };
+  $("chips").addEventListener("click", function (e) {
+    var b = e.target.closest("button"); if (!b) return;
+    var c = b.textContent, i = chipsOn.indexOf(c);
+    if (i >= 0) chipsOn.splice(i, 1); else chipsOn.push(c);
+    b.classList.toggle("on", i < 0);
+  });
+  $("nsCancel").onclick = function () { $("noteSheet").hidden = true; };
+  $("nsSend").onclick = function () {
+    var text = $("nsText").value.trim();
+    if (!text && !chipsOn.length) { $("nsErr").textContent = "Pick a chip or write something."; return; }
+    $("nsSend").disabled = true;
+    api("/api/feedback/" + cur, { method: "POST", body: JSON.stringify({ t: noteT, text: text, chips: chipsOn }) }).then(function (j) {
+      $("noteSheet").hidden = true;
+      toast("Sent to Claude" + (j.entry && j.entry.near ? " · near " + j.entry.near : ""));
+      return refreshFeedback();
+    }).catch(function (e) { $("nsErr").textContent = e.message; }).then(function () { $("nsSend").disabled = false; });
+  };
+
+  // ---------- approval ----------
+  $("approve").onclick = function () {
+    $("apName").textContent = cur + " " + TAB[cur];
+    $("apText").value = ""; $("apErr").textContent = "";
+    $("apSheet").hidden = false;
+  };
+  $("apCancel").onclick = function () { $("apSheet").hidden = true; };
+  $("apSend").onclick = function () {
+    var note = $("apText").value.trim();
+    if (!note) { $("apErr").textContent = "Say it in your words: they are recorded with the approval."; return; }
+    $("apSend").disabled = true;
+    api("/api/approve/" + cur, { method: "POST", body: JSON.stringify({ note: note }) }).then(function () {
+      $("apSheet").hidden = true; toast("Approved ✓ — Claude moves on");
+      return poll().then(refreshFeedback);
+    }).catch(function (e) { $("apErr").textContent = e.message; }).then(function () { $("apSend").disabled = false; });
+  };
+
+  window.addEventListener("hashchange", function () { var h = location.hash.replace("#", ""); if (h !== cur && stateOf(h)) select(h, 0); });
+  poll();
+  setInterval(poll, 4000);
+})();
+</script>
+</body>
+</html>

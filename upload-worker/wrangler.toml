@@ -1,0 +1,12 @@
+name = "traced-edit-upload"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "traced-edit"          # must match R2_BUCKET
+
+# Secrets (never in this file):
+#   npx wrangler secret put UPLOAD_HMAC_SECRET   same value as on Railway
+#   npx wrangler secret put TELEGRAM_BOT_TOKEN   optional: "uploaded" ping in your chat
+#   npx wrangler secret put TELEGRAM_CHAT_ID     optional: your Telegram user id
