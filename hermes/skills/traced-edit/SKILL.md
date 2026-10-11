@@ -213,7 +213,9 @@ All commands run from the workspace root (`hyperframes-videos/`). `S` means
    timeout (`--render` in the background), one at a time.
 10. **States 4 and 5 compose only from `videos/ASSETS/`** (`../ASSETS/` from a project folder).
     State 4's `inserts` take their clips, images, animations, motion graphics and icons from it
-    (`clips/`, `images/`, `animations/`, `motion-graphics/`, `svg-icons/`). State 5's `sounds`
+    (`clips/`, `images/`, `animations/`, `motion-graphics/`, `svg-icons/`). Data charts are
+    Manim renders in `motion-graphics/manim/`, made from the facts in `data/<place>/` (read only).
+    State 5's `sounds`
     come from `videos/ASSETS/sound-effects/`. The scripts refuse any path outside it. To use
     something new, the user copies it into the right ASSETS folder first; never point a config
     at the project folder, Downloads or another video's files. The one folder the skill writes
@@ -329,6 +331,10 @@ Mode `none` skips this step (run `… 1` once). Details: `references/script.md`.
    paragraph, short sentences, numbers and symbols written the way they are said. No title, no
    notes, no `[pausa]`, no `NARRADOR:`, no timings, no target length. Every fact comes from the
    context.
+   - **Numbers about the municipality** (budget, income, debt, predial, crime, police, health)
+     come from `videos/ASSETS/data/ixtapaluca/FACTS.md`, with the wording its `say` lines
+     give. That way a data chart can back the sentence in state 4. A fact marked ⚠verify goes in
+     only after the user signs off, and you tell them it is marked preliminary.
    - **Footage mode**: the paragraphs follow the footage in order, and `beats.json` gives each
      one its stretch: `[{ "p": 1, "from": 0, "to": 7.5 }, …]`, source seconds read off the
      sheets. Each paragraph must fit its stretch at a calm pace (2.5 words/s); an over-budget
@@ -394,7 +400,7 @@ a longer stretch, or slow its piece.
    the music ducks under it (state 6).
 2. Optional **inserts**: b-roll, an image, an icon, an animation laid over the cut. They come only
    from `videos/ASSETS/` (Rule 10): find candidates in `videos/ASSETS/INDEX.md` or with
-   `node tools/find-asset.mjs <words> --kind clip|image|icon|animation` (descriptions, tags,
+   `node tools/find-asset.mjs <words> --kind clip|image|icon|animation|data` (descriptions, tags,
    ⚠ flags, a contact sheet per clip), then look at each candidate before using it (a
    clip: `node S/inspect.mjs videos/<project> sheet 0 <len> 1 --asset clips/<file>`, which also
    gives you its `from`; an image or icon: open it; an animation: the `.md` next to it), and pick
@@ -402,6 +408,17 @@ a longer stretch, or slow its piece.
    box, … }` (`references/edit-schema.md`). Inserts lie on top of the footage and never move the
    cut, so events, SFX and music stay where they are. Generated stills and clips from ASSETS that
    show a real person's likeness, or words, follow the workspace invariants (`CLAUDE.md`).
+   - **Data charts** (a number from the script, shown as a graphic):
+     1. Take the fact id from `videos/ASSETS/data/ixtapaluca/FACTS.md`. The chart must show the
+        same number the voice says.
+     2. Reuse a clip: `node tools/find-asset.mjs gráfica <tema> --kind clip` (they live in
+        `motion-graphics/manim/`).
+     3. Or render one: `node tools/manim-chart.mjs --fact <id> [--scene BarSeries|LineSeries|Ranking|ShareBar|BigNumber] --size top`.
+        About 1–2 min. List the facts with `--list`.
+     4. Then run `node tools/index-assets.mjs`.
+     5. Insert it with the matching `box` (`top` for a `-top` clip), `at` on the sentence that
+        says the number, no `dur` (the clip is 6 s).
+     6. A ⚠verify chart needs the user's OK before it goes in.
 3. `node S/run.mjs videos/<project> 4 --dry` (timeline + inserts check only), then `… 4` to build.
    **Studio opens** with the cut, the inserts and (if `deliver.json` has one) the counter.
 4. Review with the user: `review/REVIEW.md` and the pictures in `review/` (one strip per event in

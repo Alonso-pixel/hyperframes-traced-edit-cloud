@@ -4,7 +4,7 @@
 //   node tools/find-asset.mjs inundación calle --kind clip --place coatepec --min 4 --max 15
 //   node tools/find-asset.mjs whoosh --kind sfx --class short
 //
-// Options: --kind clip|image|icon|animation|sfx|music   --place <text>   --tag <tag>
+// Options: --kind clip|image|icon|animation|sfx|music|data   --place <text>   --tag <tag>
 //          --class short|medium|long (sfx length: <1.5 s, 1.5–5 s, >5 s)   --min/--max <seconds> (clips longer than --max stay, marked "trim it")   --pack <folder name>
 //          --safe (drop ⚠real-person, ⚠text and duplicates)   --limit N (15)   --json
 // Matching ignores accents and case, and a shared 5-letter prefix counts as a partial hit, so
@@ -74,6 +74,7 @@ for (const a of ix.assets) {
     [tokens(a.path.split("/").pop()), 2],
     [tokens(a.folder), 1],
     [tokens(n.use), 1],
+    [tokens(m.columns?.join(" ").replace(/_/g, " ")), 1], // data tables: their column names
   ];
   let score = 0;
   for (const qt of q) score += Math.max(0, ...fields.map(([list, w]) => wordScore(qt, list) * w));
@@ -92,7 +93,7 @@ if (opt.json) {
 } else {
   for (const { a, score, trim } of top) {
     const m = a.measured;
-    const bits = [a.kind, m.duration != null ? `${m.duration}s${trim ? " (longer than --max: trim it)" : ""}` : null, m.onset ? `sound starts at ${m.onset}s` : null, (a.kind !== "sfx" && a.kind !== "music" && m.width) ? `${m.width}x${m.height}` : null, m.class, a.place].filter(Boolean).join(" · ");
+    const bits = [a.kind, m.duration != null ? `${m.duration}s${trim ? " (longer than --max: trim it)" : ""}` : null, m.onset ? `sound starts at ${m.onset}s` : null, (a.kind !== "sfx" && a.kind !== "music" && m.width) ? `${m.width}x${m.height}` : null, m.class, a.place, m.rows != null ? `${m.rows} rows: ${(m.columns || []).slice(0, 6).join(", ")}` : null].filter(Boolean).join(" · ");
     console.log(`${score.toFixed(1).padStart(4)}  ${a.path}\n      ${bits}${a.flags.length ? `  [${a.flags.join(", ")}]` : ""}`);
     const desc = a.notes.description || a.mood;
     if (desc) console.log(`      ${desc}`);

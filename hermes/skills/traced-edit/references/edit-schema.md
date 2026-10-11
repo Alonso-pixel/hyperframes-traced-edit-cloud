@@ -113,6 +113,14 @@ than `from + dur`, an insert that extends past the end of the cut, an unknown `b
 `data-duration`. A ProRes/HEVC clip (the `.mov` loops in `animations/`) is fine: Studio swaps in
 a preview proxy, and the render decodes the original.
 
+**Data charts** (`motion-graphics/manim/`, made by `node tools/manim-chart.mjs` from
+`videos/ASSETS/data/<place>/facts.json`) are clips sized for one box. The file name ends in it
+(`-top` is 960×640), so set that `box`: in another box `object-fit: cover` crops the chart.
+Leave `dur` out (6 s). The `.mp4` is an opaque dark card. A `.webm` is VP9 with alpha.
+Checked with hyperframes 0.8.105: `snapshot` and `render` keep the transparency, but
+its grey bars are faint over busy footage. The number the chart shows must be the number the
+narration says (Two truths).
+
 `timeline.json` `inserts[]` keeps each one resolved (`t`, `dur`, `anchor`, `kind`, `file`), and
 every HyperFrames project (the Studio previews of states 4–6 and the deliverable) carries them.
 In the project, clips, images and SVGs that are not inlined go to `assets/inserts/` (hard links),
