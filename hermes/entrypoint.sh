@@ -31,8 +31,9 @@ if [ -n "${GEMINI_API_KEY:-}" ] && [ ! -f "$D/.gemini/antigravity-cli/settings.j
   echo '{"modelProvider": "gemini"}' > "$D/.gemini/antigravity-cli/settings.json"
 fi
 
-chown -R "$U:$U" "$D/scripts" "$D/renderbox" "$D/cache" "$D/config.yaml" 2>/dev/null || true
-[ -d "$D/.gemini" ] && chown -R "$U:$U" "$D/.gemini" || true
+# The volume mounts root-owned; the hermes user must own the whole tree (cron, sessions, memory).
+# chown on the volume persists, so this heals old root-owned stragglers and is idempotent on boots.
+chown -R "$U:$U" "$D" 2>/dev/null || true
 
 # The reaper: every 30 min, stop the codespace when idle. Script-only (no LLM call); it prints
 # (and so messages you) only when it stopped the box.
