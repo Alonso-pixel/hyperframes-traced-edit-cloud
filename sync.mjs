@@ -144,7 +144,7 @@ function loadEnv() {
   const f = join(REPO, ".env");
   if (!existsSync(f)) return {};
   return Object.fromEntries(
-    readFileSync(f, "utf8").split(/\r?\n/).filter((l) => /^\s*[A-Z_]+=/.test(l)).map((l) => {
+    readFileSync(f, "utf8").split(/\r?\n/).filter((l) => /^\s*[A-Z0-9_]+=/.test(l)).map((l) => {
       const i = l.indexOf("=");
       return [l.slice(0, i).trim(), l.slice(i + 1).trim().replace(/^["']|["']$/g, "")];
     }),
